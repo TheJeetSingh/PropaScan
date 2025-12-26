@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Hello World Extension",
+  "name": "PropaScan",
   "version": "1.0.0",
-  "description": "A simple Hello World Chrome extension",
+  "description": "Upload images or enter text for analysis and preview",
   "action": {
     "default_popup": "popup.html"
   }

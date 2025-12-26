@@ -3,13 +3,58 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hello World Extension</title>
+  <title>PropaScan</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
-    <h1>Hello World!</h1>
-    <p>Welcome to your Chrome extension</p>
+    <!-- Header -->
+    <header class="header">
+      <h1>PropaScan</h1>
+      <p class="subtitle">Upload an image or enter text to analyze</p>
+    </header>
+
+    <!-- Image Upload Section -->
+    <section class="upload-section">
+      <h2>Image Upload</h2>
+      <div class="upload-area">
+        <input type="file" id="imageInput" accept="image/*" class="file-input" />
+        <label for="imageInput" class="upload-button">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+          Choose Image
+        </label>
+        <button id="clearImageBtn" class="clear-btn hidden">Remove Image</button>
+      </div>
+
+      <div id="imagePreviewContainer" class="preview-container hidden">
+        <div class="preview-header">
+          <span id="fileName" class="file-name"></span>
+          <span id="fileSize" class="file-size"></span>
+        </div>
+        <img id="imagePreview" class="image-preview" alt="Image preview" />
+      </div>
+    </section>
+
+    <!-- Text Input Section -->
+    <section class="text-section">
+      <h2>Text Input</h2>
+      <textarea
+        id="textInput"
+        class="text-input"
+        placeholder="Enter your text here...&#10;&#10;You can paste or type multiple lines of text.&#10;The text area will scroll if needed."
+        rows="10"
+      ></textarea>
+      <div class="text-info">
+        <span id="charCount" class="char-count">0 characters</span>
+      </div>
+    </section>
+
+    <!-- Action Buttons -->
+    <div class="actions">
+      <button id="clearAllBtn" class="action-button clear-all-btn">Clear All</button>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>
