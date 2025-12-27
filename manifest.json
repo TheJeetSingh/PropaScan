@@ -11,6 +11,9 @@
   },
   "host_permissions": [
     "https://ai.hackclub.com/*"
+  ],
+  "permissions": [
+    "storage"
   ]
 }
 

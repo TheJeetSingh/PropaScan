@@ -71,6 +71,14 @@ async function handleAnalyzeRequest(data, sendResponse) {
   try {
     const { textContent, imageDataUrl, config } = data;
     
+    // Mark analysis as in progress and save original content
+    await chrome.storage.local.set({ 
+      analysisStatus: 'in_progress',
+      analysisError: null,
+      originalText: textContent || '',
+      originalImage: imageDataUrl || ''
+    });
+
     // Load config from storage or use provided config
     // Hack Club AI uses: https://ai.hackclub.com/proxy/v1/chat/completions
     const apiUrl = config?.HACKCLUB_AI_API_URL || 'https://ai.hackclub.com/proxy/v1/chat/completions';
@@ -85,7 +93,12 @@ async function handleAnalyzeRequest(data, sendResponse) {
     console.log('Background: API Key present:', !!apiKey && apiKey !== 'your_api_key_here');
 
     if (!apiKey || apiKey === 'your_api_key_here') {
-      sendResponse({ error: 'API key not configured' });
+      const error = 'API key not configured';
+      await chrome.storage.local.set({ 
+        analysisStatus: 'error',
+        analysisError: error
+      });
+      sendResponse({ error: error });
       return;
     }
 
@@ -160,9 +173,12 @@ async function handleAnalyzeRequest(data, sendResponse) {
     if (!response.ok) {
       const errorData = await response.text();
       console.error('Background: API error response:', errorData);
-      sendResponse({ 
-        error: `API request failed: ${response.status} ${response.statusText} - ${errorData}` 
+      const errorMsg = `API request failed: ${response.status} ${response.statusText} - ${errorData}`;
+      await chrome.storage.local.set({ 
+        analysisStatus: 'error',
+        analysisError: errorMsg
       });
+      sendResponse({ error: errorMsg });
       return;
     }
 
@@ -172,7 +188,12 @@ async function handleAnalyzeRequest(data, sendResponse) {
 
     if (!content) {
       console.error('Background: No content in response:', responseData);
-      sendResponse({ error: 'No content in API response' });
+      const errorMsg = 'No content in API response';
+      await chrome.storage.local.set({ 
+        analysisStatus: 'error',
+        analysisError: errorMsg
+      });
+      sendResponse({ error: errorMsg });
       return;
     }
 
@@ -180,14 +201,37 @@ async function handleAnalyzeRequest(data, sendResponse) {
     try {
       const parsed = JSON.parse(content);
       console.log('Background: Successfully parsed JSON response');
+      
+      // Save results to storage (analysis continues in background even if popup closes)
+      // Original content is already saved above
+      await chrome.storage.local.set({ 
+        analysisResult: parsed,
+        analysisStatus: 'completed',
+        analysisError: null
+      });
+      
       sendResponse({ result: parsed });
     } catch (parseError) {
       console.error('Background: JSON parse error:', parseError);
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        sendResponse({ result: JSON.parse(jsonMatch[0]) });
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        // Save results to storage (original content already saved)
+        await chrome.storage.local.set({ 
+          analysisResult: parsed,
+          analysisStatus: 'completed',
+          analysisError: null
+        });
+        
+        sendResponse({ result: parsed });
       } else {
-        sendResponse({ error: 'Failed to parse JSON response: ' + parseError.message });
+        const parseErrorMsg = 'Failed to parse JSON response: ' + parseError.message;
+        await chrome.storage.local.set({ 
+          analysisStatus: 'error',
+          analysisError: parseErrorMsg
+        });
+        sendResponse({ error: parseErrorMsg });
       }
     }
   } catch (error) {
@@ -203,6 +247,12 @@ async function handleAnalyzeRequest(data, sendResponse) {
     if (error.message.includes('Failed to fetch')) {
       errorMessage = `Network error: Unable to connect to API endpoint. Please verify:\n1. The API endpoint URL is correct\n2. Your internet connection is working\n3. The API key is valid\n\nOriginal error: ${error.message}`;
     }
+    
+    // Save error to storage
+    await chrome.storage.local.set({ 
+      analysisStatus: 'error',
+      analysisError: errorMessage
+    });
     
     sendResponse({ error: errorMessage });
   }

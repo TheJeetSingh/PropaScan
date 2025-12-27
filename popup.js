@@ -136,18 +136,31 @@ document.addEventListener('DOMContentLoaded', () => {
     hideError();
     resultsSection.classList.remove('hidden');
 
+    // Save original content and mark analysis as in progress (background worker will also set this)
+    await chrome.storage.local.set({ 
+      analysisStatus: 'in_progress',
+      originalText: textContent,
+      originalImage: hasValidImage ? imageDataUrl : ''
+    });
+
     try {
       // Get image data URL if image is present and valid
       const imageData = hasValidImage ? imageDataUrl : '';
 
-      // Call the API
+      // Call the API (runs in background, results saved by background worker)
       const result = await window.PropaScanAPI.analyzeContent(textContent, imageData);
       
-      // Display results
+      // Display results (already saved by background worker)
       displayResults(result);
     } catch (error) {
       console.error('Analysis error:', error);
       showError(`Analysis failed: ${error.message}`);
+      
+      // Save error to storage
+      await chrome.storage.local.set({ 
+        analysisStatus: 'error',
+        analysisError: error.message
+      });
     } finally {
       setLoading(false);
     }
@@ -278,12 +291,79 @@ document.addEventListener('DOMContentLoaded', () => {
     errorMessage.classList.add('hidden');
   }
 
+
+  // Load saved results from storage and check for pending analysis
+  function loadSavedResults() {
+    chrome.storage.local.get(['analysisResult', 'analysisStatus', 'analysisError', 'originalText', 'originalImage'], (data) => {
+      // Restore original content if it exists
+      if (data.originalText) {
+        textInput.value = data.originalText;
+        updateCharCount();
+      }
+      if (data.originalImage) {
+        imagePreview.src = data.originalImage;
+        imagePreviewContainer.classList.remove('hidden');
+        clearImageBtn.classList.remove('hidden');
+        // Note: We can't restore the file input, but we can show the image
+      }
+      
+      if (data.analysisStatus === 'in_progress') {
+        // Analysis is still running in background
+        console.log('Analysis in progress, showing loading state');
+        resultsSection.classList.remove('hidden');
+        setLoading(true);
+        
+        // Poll for results (check every second)
+        const checkInterval = setInterval(() => {
+          chrome.storage.local.get(['analysisResult', 'analysisStatus', 'analysisError'], (checkData) => {
+            if (checkData.analysisStatus === 'completed' && checkData.analysisResult) {
+              clearInterval(checkInterval);
+              setLoading(false);
+              displayResults(checkData.analysisResult);
+            } else if (checkData.analysisStatus === 'error') {
+              clearInterval(checkInterval);
+              setLoading(false);
+              showError(checkData.analysisError || 'Analysis failed');
+            }
+          });
+        }, 1000);
+        
+        // Stop polling after 2 minutes (timeout)
+        setTimeout(() => {
+          clearInterval(checkInterval);
+        }, 120000);
+        
+      } else if (data.analysisResult && data.analysisStatus === 'completed') {
+        // Results are ready
+        console.log('Loading saved analysis results');
+        resultsSection.classList.remove('hidden');
+        displayResults(data.analysisResult);
+      } else if (data.analysisStatus === 'error') {
+        // Show error if it exists
+        resultsSection.classList.remove('hidden');
+        showError(data.analysisError || 'Analysis failed');
+      }
+    });
+  }
+
+  // Clear saved results from storage
+  function clearSavedResults() {
+    chrome.storage.local.remove(['analysisResult', 'analysisStatus', 'analysisError', 'originalText', 'originalImage'], () => {
+      console.log('Saved analysis results, status, and original content cleared');
+    });
+  }
+
   // Clear results
   function clearResults() {
     resultsSection.classList.add('hidden');
     resultsContent.innerHTML = '';
     hideError();
+    setLoading(false);
+    clearSavedResults();
   }
+
+  // Load saved results when popup opens
+  loadSavedResults();
 
   // Initialize character count
   updateCharCount();
