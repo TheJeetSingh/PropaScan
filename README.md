@@ -57,10 +57,9 @@ You can customize these settings in `config.js` (after copying from `config.exam
 - `popup.css` - Styling for the popup
 - `popup.js` - Main extension logic
 - `api.js` - Hack Club AI API integration
+- `background.js` - Background service worker for API requests
 - `config.example.js` - Example configuration file (copy to `config.js` and add your API key)
 - `config.js` - Your local configuration file (gitignored, copy from `config.example.js`)
-- `prompt.md` - System prompt for propaganda detection
-- `.env` / `.env.example` - Environment variable reference (optional, Chrome extensions use `config.js`)
 
 ## Adding Icons
 
