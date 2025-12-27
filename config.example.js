@@ -12,9 +12,9 @@ const CONFIG = {
   HACK_CLUB_AI_API_KEY: 'your_api_key_here',
   
   // API Endpoint
-  // Try the proxy endpoint if the direct endpoint doesn't work (better for CORS)
-  // Direct endpoint: https://api.hackclub.ai/v1/chat/completions
-  // Proxy endpoint: https://ai.hackclub.com/proxy/v1/chat/completions
+  // Hack Club AI uses OpenRouter-compatible API
+  // Base URL from documentation: https://ai.hackclub.com/proxy/v1
+  // Full endpoint: https://ai.hackclub.com/proxy/v1/chat/completions
   HACKCLUB_AI_API_URL: 'https://ai.hackclub.com/proxy/v1/chat/completions',
   
   // AI Model to use

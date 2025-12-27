@@ -5,6 +5,12 @@
   "description": "Upload images or enter text for analysis and preview",
   "action": {
     "default_popup": "popup.html"
-  }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://ai.hackclub.com/*"
+  ]
 }
 
