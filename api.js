@@ -1,0 +1,207 @@
+// Hack Club AI API Integration for PropaScan
+// Configuration is loaded from config.js or uses defaults
+const HACKCLUB_AI_API_URL = (window.PropaScanConfig?.HACKCLUB_AI_API_URL) || 'https://api.hackclub.ai/v1/chat/completions';
+const API_KEY = window.PropaScanConfig?.HACK_CLUB_AI_API_KEY || '';
+const MODEL = (window.PropaScanConfig?.AI_MODEL) || 'google/gemini-3-pro-preview';
+const TEMPERATURE = (window.PropaScanConfig?.TEMPERATURE) || 0.7;
+const MAX_TOKENS = (window.PropaScanConfig?.MAX_TOKENS) || 4000;
+const TOP_P = (window.PropaScanConfig?.TOP_P) || 1.0;
+const REQUEST_TIMEOUT = (window.PropaScanConfig?.REQUEST_TIMEOUT) || 60000;
+
+// System prompt for propaganda analysis
+const SYSTEM_PROMPT = `You are a propaganda and manipulation detection expert. Analyze the following content and identify any propaganda techniques, bias, or manipulation being used.
+
+DETECTION SCOPE:
+- If given TEXT: analyze language, framing, rhetoric, and persuasion tactics
+- If given IMAGE: analyze visual elements, composition, symbolism, and emotional triggers
+- If given BOTH: analyze how text and visuals work together to manipulate
+
+For each instance found, provide:
+1. The specific element (quote the text OR describe the visual element)
+2. The technique used (from this list):
+
+TEXT TECHNIQUES: Loaded Language, Name Calling, Appeal to Fear, Appeal to Authority, Bandwagon, False Dilemma, Whataboutism, Exaggeration, Repetition, Slogans, Flag Waving, Doubt, Strawman, Red Herring, Thought-Terminating Cliché, Cherry-Picking, False Equivalence, Framing Bias, Omission, Appeal to Emotion
+
+VISUAL TECHNIQUES: Heroic Portrayal, Villainization, Fear Imagery, Color Manipulation, Symbolic Imagery, Selective Framing, Emotional Appeal, Dehumanization, Misleading Data/Charts, Out of Context Image, Doctored/Manipulated Image, Appeal to Authority Visual, Testimonial Imagery, Plain Folks Appeal, Glittering Generalities Visual
+
+3. Confidence level (high/medium/low)
+4. Explanation of why this is manipulation and what response it's designed to trigger
+
+Respond in JSON format:
+{
+  "content_type": "text/image/both",
+  "contains_propaganda": true/false,
+  "manipulation_score": 0-100,
+  "political_leaning": "left/center/right/none",
+  "source_credibility": "reliable/questionable/unverified",
+  "overall_severity": "none/low/medium/high",
+  "analysis": {
+    "text_analysis": {
+      "tone": "description of overall tone",
+      "framing": "how the narrative is framed",
+      "missing_context": "what information is omitted or downplayed"
+    },
+    "visual_analysis": {
+      "dominant_colors": ["color1", "color2"],
+      "psychological_intent": "what emotions the visuals evoke",
+      "composition": "how framing, lighting, angles manipulate perception"
+    }
+  },
+  "target_audience": "who this is designed to influence",
+  "intended_effect": "what belief, emotion, or action this pushes",
+  "instances": [
+    {
+      "element": "exact quote OR visual description",
+      "element_type": "text/visual",
+      "technique": "technique name",
+      "confidence": "high/medium/low",
+      "explanation": "why this is propaganda and emotional intent"
+    }
+  ],
+  "text_visual_synergy": "how text and image work together (null if only one is present)",
+  "credibility_red_flags": ["list of reasons to be skeptical"],
+  "neutral_rewrite": "how this content could be presented without manipulation (for text only)"
+}
+
+If no propaganda is detected, explain why the content appears neutral and factual.
+
+CONTENT TO ANALYZE:`;
+
+/**
+ * Analyze content using Hack Club AI
+ * @param {string} textContent - Text content to analyze (optional)
+ * @param {string} imageDataUrl - Base64 image data URL (optional)
+ * @returns {Promise<Object>} Analysis result in JSON format
+ */
+async function analyzeContent(textContent = '', imageDataUrl = '') {
+  try {
+    
+    // Build the user message
+    let userMessage = '';
+    
+    if (imageDataUrl && textContent) {
+      // Both image and text
+      userMessage = `CONTENT TO ANALYZE:\n\nTEXT:\n${textContent}\n\nIMAGE:\n[Image is attached below]`;
+    } else if (textContent) {
+      // Text only
+      userMessage = `CONTENT TO ANALYZE:\n\nTEXT:\n${textContent}`;
+    } else if (imageDataUrl) {
+      // Image only
+      userMessage = `CONTENT TO ANALYZE:\n\nIMAGE:\n[Image is attached below]`;
+    } else {
+      throw new Error('No content provided for analysis');
+    }
+
+    // Prepare messages array
+    const messages = [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPT
+      }
+    ];
+
+    // If image is provided, use vision format
+    if (imageDataUrl) {
+      messages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: userMessage
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: imageDataUrl
+            }
+          }
+        ]
+      });
+    } else {
+      // Text only
+      messages.push({
+        role: 'user',
+        content: userMessage
+      });
+    }
+
+    // Validate API key
+    if (!API_KEY || API_KEY === 'your_api_key_here') {
+      throw new Error('API key not configured. Please set HACK_CLUB_AI_API_KEY in config.js');
+    }
+
+    // Prepare request headers
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`
+    };
+
+    // Prepare request body
+    const requestBody = {
+      model: MODEL,
+      messages: messages,
+      response_format: { type: 'json_object' },
+      temperature: TEMPERATURE,
+      max_tokens: MAX_TOKENS,
+      top_p: TOP_P
+    };
+
+    // Make API request with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+    try {
+      const response = await fetch(HACKCLUB_AI_API_URL, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorData}`);
+      }
+
+      const data = await response.json();
+      
+      // Extract the content from the response
+      const content = data.choices[0]?.message?.content;
+      
+      if (!content) {
+        throw new Error('No content in API response');
+      }
+
+      // Parse JSON response
+      try {
+        return JSON.parse(content);
+      } catch (parseError) {
+        // If parsing fails, try to extract JSON from the response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+        throw new Error('Failed to parse JSON response: ' + parseError.message);
+      }
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Request timeout - the API took too long to respond');
+      }
+      // Provide more detailed error information
+      if (fetchError.message.includes('Failed to fetch') || fetchError.message.includes('NetworkError')) {
+        throw new Error(`Network error: Unable to connect to API. Please check:\n1. Your internet connection\n2. The API endpoint URL: ${HACKCLUB_AI_API_URL}\n3. Your API key is valid\n\nOriginal error: ${fetchError.message}`);
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('Error analyzing content:', error);
+    throw error;
+  }
+}
+
+// Export for use in popup.js
+window.PropaScanAPI = { analyzeContent };
+

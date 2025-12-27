@@ -53,9 +53,23 @@
 
     <!-- Action Buttons -->
     <div class="actions">
+      <button id="analyzeBtn" class="action-button analyze-btn">Analyze</button>
       <button id="clearAllBtn" class="action-button clear-all-btn">Clear All</button>
     </div>
+
+    <!-- Results Section -->
+    <section id="resultsSection" class="results-section hidden">
+      <h2>Analysis Results</h2>
+      <div id="loadingIndicator" class="loading hidden">
+        <div class="spinner"></div>
+        <p>Analyzing content...</p>
+      </div>
+      <div id="resultsContent" class="results-content"></div>
+      <div id="errorMessage" class="error-message hidden"></div>
+    </section>
   </div>
+  <script src="config.js"></script>
+  <script src="api.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
