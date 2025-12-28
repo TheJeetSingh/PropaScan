@@ -5,73 +5,21 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('Popup DOM loaded');
 
   // Get DOM elements
-  const imageInput = document.getElementById('imageInput');
   const imagePreview = document.getElementById('imagePreview');
   const imagePreviewContainer = document.getElementById('imagePreviewContainer');
-  const fileName = document.getElementById('fileName');
-  const fileSize = document.getElementById('fileSize');
-  const clearImageBtn = document.getElementById('clearImageBtn');
-  const textInput = document.getElementById('textInput');
-  const charCount = document.getElementById('charCount');
+  const previewSection = document.getElementById('previewSection');
+  const clearPreviewBtn = document.getElementById('clearPreviewBtn');
   const clearAllBtn = document.getElementById('clearAllBtn');
   const analyzeBtn = document.getElementById('analyzeBtn');
   const resultsSection = document.getElementById('resultsSection');
   const resultsContent = document.getElementById('resultsContent');
   const loadingIndicator = document.getElementById('loadingIndicator');
   const errorMessage = document.getElementById('errorMessage');
+  const selectAreaBtn = document.getElementById('selectAreaBtn');
 
-  // Maximum file size (10MB)
-  const MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-  // Image upload handler
-  imageInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image file (PNG, JPG, GIF, etc.)');
-      imageInput.value = '';
-      return;
-    }
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      alert(`File size exceeds 10MB limit. Please choose a smaller image.\nYour file: ${formatFileSize(file.size)}`);
-      imageInput.value = '';
-      return;
-    }
-
-    // Read and display the image
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
-      imagePreview.src = event.target.result;
-      fileName.textContent = file.name;
-      fileSize.textContent = formatFileSize(file.size);
-
-      // Show preview and clear button
-      imagePreviewContainer.classList.remove('hidden');
-      clearImageBtn.classList.remove('hidden');
-    };
-
-    reader.onerror = () => {
-      alert('Error reading file. Please try again.');
-      imageInput.value = '';
-    };
-
-    reader.readAsDataURL(file);
-  });
-
-  // Clear image handler
-  clearImageBtn.addEventListener('click', () => {
-    clearImage();
-  });
-
-  // Text input handler with character count
-  textInput.addEventListener('input', () => {
-    updateCharCount();
+  // Select area (screenshot) button handler
+  selectAreaBtn.addEventListener('click', async () => {
+    await handleSelectArea();
   });
 
   // Analyze button handler
@@ -79,55 +27,62 @@ document.addEventListener('DOMContentLoaded', () => {
     await handleAnalyze();
   });
 
+  // Clear preview button handler
+  clearPreviewBtn.addEventListener('click', () => {
+    clearPreview();
+  });
+
   // Clear all button handler
   clearAllBtn.addEventListener('click', () => {
-    clearImage();
-    clearText();
+    clearPreview();
     clearResults();
   });
 
-  // Helper function to clear image
-  function clearImage() {
-    imageInput.value = '';
-    imagePreview.src = '';
-    fileName.textContent = '';
-    fileSize.textContent = '';
-    imagePreviewContainer.classList.add('hidden');
-    clearImageBtn.classList.add('hidden');
-  }
+  // Handle select area action (for screenshot)
+  async function handleSelectArea() {
+    try {
+      // Get the current active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        alert('Area selection is not available on this page. Please navigate to a regular webpage.');
+        return;
+      }
 
-  // Helper function to clear text
-  function clearText() {
-    textInput.value = '';
-    updateCharCount();
-  }
-
-  // Helper function to update character count
-  function updateCharCount() {
-    const count = textInput.value.length;
-    charCount.textContent = `${count.toLocaleString()} character${count !== 1 ? 's' : ''}`;
-  }
-
-  // Helper function to format file size
-  function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+      // Ensure content script is injected
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: 'startAreaSelection' });
+      } catch (injectError) {
+        // Content script might not be loaded, inject it
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        });
+        await chrome.scripting.insertCSS({
+          target: { tabId: tab.id },
+          files: ['content.css']
+        });
+        // Try again after injection
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await chrome.tabs.sendMessage(tab.id, { action: 'startAreaSelection' });
+      }
+      
+      // Close popup to allow user to select area
+      window.close();
+    } catch (error) {
+      console.error('Error starting area selection:', error);
+      alert('Error starting area selection. Please make sure you\'re on a regular webpage and try again.');
+    }
   }
 
   // Handle analyze action
   async function handleAnalyze() {
-    const textContent = textInput.value.trim();
     const imageDataUrl = imagePreview.src;
     const hasValidImage = imageDataUrl && imageDataUrl.startsWith('data:image');
 
-    // Validate that at least one input is provided
-    if (!textContent && !hasValidImage) {
-      showError('Please provide text or upload an image to analyze.');
+    // Validate that screenshot is provided (everything is now image-based)
+    if (!hasValidImage) {
+      showError('Please capture a screenshot first.');
       return;
     }
 
@@ -136,31 +91,25 @@ document.addEventListener('DOMContentLoaded', () => {
     hideError();
     resultsSection.classList.remove('hidden');
 
-    // Save original content and mark analysis as in progress (background worker will also set this)
+    // Save original content and mark analysis as in progress
     await chrome.storage.local.set({ 
       analysisStatus: 'in_progress',
-      originalText: textContent,
-      originalImage: hasValidImage ? imageDataUrl : ''
+      originalImage: imageDataUrl,
+      originalText: '' // Empty since we're only using images now
     });
 
     try {
-      // Get image data URL if image is present and valid
-      const imageData = hasValidImage ? imageDataUrl : '';
-
-      // Call the API (runs in background, results saved by background worker)
-      const result = await window.PropaScanAPI.analyzeContent(textContent, imageData);
+      // Call the API with image only (empty text since everything is vision-based)
+      // Background worker will save results to storage automatically
+      const result = await window.PropaScanAPI.analyzeContent('', imageDataUrl);
       
-      // Display results (already saved by background worker)
+      // Results are already saved by background worker, just display them
       displayResults(result);
     } catch (error) {
       console.error('Analysis error:', error);
       showError(`Analysis failed: ${error.message}`);
       
-      // Save error to storage
-      await chrome.storage.local.set({ 
-        analysisStatus: 'error',
-        analysisError: error.message
-      });
+      // Error is already saved by background worker
     } finally {
       setLoading(false);
     }
@@ -235,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Target audience and intended effect
     if (result.target_audience || result.intended_effect) {
       html += '<div class="impact-section">';
-      html += '<h3>Impact Analysis</h3>';
+      html += '<h3>Target Audience & Intended Effect</h3>';
       if (result.target_audience) {
         html += `<p><strong>Target Audience:</strong> ${result.target_audience}</p>`;
       }
@@ -291,20 +240,39 @@ document.addEventListener('DOMContentLoaded', () => {
     errorMessage.classList.add('hidden');
   }
 
+  // Clear preview
+  function clearPreview() {
+    imagePreview.src = '';
+    previewSection.classList.add('hidden');
+    clearSavedContent();
+  }
+
+  // Clear saved content from storage
+  function clearSavedContent() {
+    chrome.storage.local.remove(['selectedScreenshot', 'selectionType'], () => {
+      console.log('Saved selection cleared');
+    });
+  }
 
   // Load saved results from storage and check for pending analysis
   function loadSavedResults() {
-    chrome.storage.local.get(['analysisResult', 'analysisStatus', 'analysisError', 'originalText', 'originalImage'], (data) => {
-      // Restore original content if it exists
-      if (data.originalText) {
-        textInput.value = data.originalText;
-        updateCharCount();
+    chrome.storage.local.get(['analysisResult', 'analysisStatus', 'analysisError', 'originalImage', 'selectedScreenshot', 'selectionType'], (data) => {
+      // Check if there's a new screenshot from content script
+      if (data.selectedScreenshot && data.selectionType === 'screenshot') {
+        // Clear the selection flag and set the image
+        chrome.storage.local.remove(['selectedScreenshot', 'selectionType']);
+        imagePreview.src = data.selectedScreenshot;
+        previewSection.classList.remove('hidden');
+        // Scroll to preview section
+        setTimeout(() => {
+          previewSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
       }
-      if (data.originalImage) {
+      
+      // Restore original image if it exists (for persistent results)
+      if (data.originalImage && !data.selectedScreenshot) {
         imagePreview.src = data.originalImage;
-        imagePreviewContainer.classList.remove('hidden');
-        clearImageBtn.classList.remove('hidden');
-        // Note: We can't restore the file input, but we can show the image
+        previewSection.classList.remove('hidden');
       }
       
       if (data.analysisStatus === 'in_progress') {
@@ -348,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Clear saved results from storage
   function clearSavedResults() {
-    chrome.storage.local.remove(['analysisResult', 'analysisStatus', 'analysisError', 'originalText', 'originalImage'], () => {
+    chrome.storage.local.remove(['analysisResult', 'analysisStatus', 'analysisError', 'originalImage'], () => {
       console.log('Saved analysis results, status, and original content cleared');
     });
   }
@@ -364,8 +332,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load saved results when popup opens
   loadSavedResults();
-
-  // Initialize character count
-  updateCharCount();
 });
-

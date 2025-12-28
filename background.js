@@ -64,19 +64,56 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analyzeContent') {
     handleAnalyzeRequest(request.data, sendResponse);
     return true; // Keep the message channel open for async response
+  } else if (request.action === 'approveSelection') {
+    handleApproveSelection(request.data, request.type);
+    sendResponse({ success: true });
+    return true;
+  } else if (request.action === 'captureArea') {
+    handleCaptureArea(request.rect, sender.tab.id);
+    sendResponse({ success: true });
+    return true;
   }
 });
+
+// Handle approved selection (everything is now screenshot-based)
+async function handleApproveSelection(data, type) {
+  // Save screenshot to storage
+  // Popup will pick it up when user reopens it
+  await chrome.storage.local.set({
+    selectedScreenshot: data,
+    selectionType: 'screenshot'
+  });
+  console.log('Screenshot saved, user can reopen popup to see it');
+}
+
+// Handle area capture - capture full screenshot and send to content script to crop
+async function handleCaptureArea(rect, tabId) {
+  try {
+    // Capture the visible tab (full screenshot)
+    const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    
+    // Send full screenshot and rect to content script for cropping
+    await chrome.tabs.sendMessage(tabId, {
+      action: 'cropScreenshot',
+      screenshot: dataUrl,
+      rect: rect
+    });
+  } catch (error) {
+    console.error('Error capturing area:', error);
+  }
+}
 
 async function handleAnalyzeRequest(data, sendResponse) {
   try {
     const { textContent, imageDataUrl, config } = data;
     
     // Mark analysis as in progress and save original content
+    // Everything is now vision-based, so only save image
     await chrome.storage.local.set({ 
       analysisStatus: 'in_progress',
       analysisError: null,
-      originalText: textContent || '',
-      originalImage: imageDataUrl || ''
+      originalImage: imageDataUrl || '',
+      originalText: '' // Always empty since everything is vision-based
     });
 
     // Load config from storage or use provided config
@@ -102,18 +139,19 @@ async function handleAnalyzeRequest(data, sendResponse) {
       return;
     }
 
-    // Build the user message
-    let userMessage = '';
-    if (imageDataUrl && textContent) {
-      userMessage = `CONTENT TO ANALYZE:\n\nTEXT:\n${textContent}\n\nIMAGE:\n[Image is attached below]`;
-    } else if (textContent) {
-      userMessage = `CONTENT TO ANALYZE:\n\nTEXT:\n${textContent}`;
-    } else if (imageDataUrl) {
-      userMessage = `CONTENT TO ANALYZE:\n\nIMAGE:\n[Image is attached below]`;
-    } else {
-      sendResponse({ error: 'No content provided for analysis' });
+    // Validate that we have an image (everything is now vision-based)
+    if (!imageDataUrl) {
+      const error = 'No image provided for analysis';
+      await chrome.storage.local.set({ 
+        analysisStatus: 'error',
+        analysisError: error
+      });
+      sendResponse({ error: error });
       return;
     }
+
+    // Build the user message - everything is image-based now
+    const userMessage = `CONTENT TO ANALYZE:\n\nIMAGE:\n[Image is attached below]`;
 
     // Prepare messages
     const messages = [

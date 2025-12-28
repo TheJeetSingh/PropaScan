@@ -11,43 +11,33 @@
     <!-- Header -->
     <header class="header">
       <h1>PropaScan</h1>
-      <p class="subtitle">Upload an image or enter text to analyze</p>
+      <p class="subtitle">Capture text or screenshots from web pages to analyze</p>
     </header>
 
-    <!-- Image Upload Section -->
-    <section class="upload-section">
-      <h2>Image Upload</h2>
-      <div class="upload-area">
-        <input type="file" id="imageInput" accept="image/*" class="file-input" />
-        <label for="imageInput" class="upload-button">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+    <!-- Capture Options Section -->
+    <section class="capture-section">
+      <h2>Capture from Page</h2>
+      <div class="capture-buttons">
+        <button id="selectAreaBtn" class="capture-button">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
           </svg>
-          Choose Image
-        </label>
-        <button id="clearImageBtn" class="clear-btn hidden">Remove Image</button>
+          Capture Screenshot
+        </button>
       </div>
-
-      <div id="imagePreviewContainer" class="preview-container hidden">
-        <div class="preview-header">
-          <span id="fileName" class="file-name"></span>
-          <span id="fileSize" class="file-size"></span>
-        </div>
-        <img id="imagePreview" class="image-preview" alt="Image preview" />
-      </div>
+      <p class="capture-hint">Select an area to capture (works for text, images, or both)</p>
     </section>
 
-    <!-- Text Input Section -->
-    <section class="text-section">
-      <h2>Text Input</h2>
-      <textarea
-        id="textInput"
-        class="text-input"
-        placeholder="Enter your text here...&#10;&#10;You can paste or type multiple lines of text.&#10;The text area will scroll if needed."
-        rows="10"
-      ></textarea>
-      <div class="text-info">
-        <span id="charCount" class="char-count">0 characters</span>
+    <!-- Preview Section -->
+    <section id="previewSection" class="preview-section hidden">
+      <h2>Preview</h2>
+      <div id="imagePreviewContainer" class="preview-container">
+        <img id="imagePreview" class="image-preview" alt="Preview" />
+        <div class="preview-actions">
+          <button id="clearPreviewBtn" class="clear-btn">Clear</button>
+        </div>
       </div>
     </section>
 

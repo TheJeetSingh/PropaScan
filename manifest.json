@@ -13,7 +13,15 @@
     "https://ai.hackclub.com/*"
   ],
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content.js", "content.css"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }
 
