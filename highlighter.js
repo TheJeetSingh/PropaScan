@@ -196,21 +196,52 @@ function highlightText(instance, index) {
         console.log(`[Highlighter] Found exact match in node ${nodeIndex}`);
       }
     } else {
-      // Strategy 2: Try fuzzy match (first 20 chars)
-      const fuzzyMatch = normalizedSearch.substring(0, Math.min(20, normalizedSearch.length));
+      // Strategy 2: Try partial match - search for beginning of text and extend to end
+      const fuzzyMatch = normalizedSearch.substring(0, Math.min(15, normalizedSearch.length));
       const fuzzyIndex = normalizedNode.indexOf(fuzzyMatch);
       if (fuzzyIndex !== -1) {
-        // Try to find similar text in original
-        const originalFuzzy = searchText.substring(0, Math.min(30, searchText.length)).trim();
-        const originalFuzzyIndex = nodeText.toLowerCase().indexOf(originalFuzzy.toLowerCase());
-        if (originalFuzzyIndex !== -1) {
-          matches.push({
-            node: node,
-            start: originalFuzzyIndex,
-            end: Math.min(originalFuzzyIndex + originalFuzzy.length, nodeText.length),
-            text: nodeText.substring(originalFuzzyIndex, Math.min(originalFuzzyIndex + originalFuzzy.length, nodeText.length))
-          });
-          console.log(`[Highlighter] Found fuzzy match in node ${nodeIndex}`);
+        // Found the start - now try to get as much of the full text as possible
+        const searchWords = normalizedSearch.split(' ');
+        const nodeWords = normalizedNode.split(' ');
+
+        // Find how many words from searchText appear consecutively in this node
+        let matchedWords = 0;
+        let startWordIndex = -1;
+
+        for (let i = 0; i < nodeWords.length; i++) {
+          if (nodeWords[i] === searchWords[0]) {
+            startWordIndex = i;
+            matchedWords = 1;
+
+            for (let j = 1; j < searchWords.length && (i + j) < nodeWords.length; j++) {
+              if (nodeWords[i + j] === searchWords[j]) {
+                matchedWords++;
+              } else {
+                break;
+              }
+            }
+            break;
+          }
+        }
+
+        if (matchedWords > 0 && startWordIndex !== -1) {
+          // Reconstruct the matched text from original (non-normalized) node
+          const originalWords = nodeText.split(/\s+/);
+          const matchStart = nodeText.toLowerCase().indexOf(originalWords.slice(startWordIndex, startWordIndex + matchedWords).join(' ').toLowerCase());
+
+          if (matchStart !== -1) {
+            // Calculate end position by matching words
+            const matchedOriginalText = originalWords.slice(startWordIndex, startWordIndex + matchedWords).join(' ');
+            const matchEnd = matchStart + matchedOriginalText.length;
+
+            matches.push({
+              node: node,
+              start: matchStart,
+              end: matchEnd,
+              text: nodeText.substring(matchStart, matchEnd)
+            });
+            console.log(`[Highlighter] Found partial match with ${matchedWords} words in node ${nodeIndex}`);
+          }
         }
       }
     }
@@ -221,7 +252,7 @@ function highlightText(instance, index) {
   if (matches.length === 0) {
     console.log('[Highlighter] No direct matches, trying parent element search...');
     const allElements = document.querySelectorAll('p, div, span, article, section, h1, h2, h3, h4, h5, h6, li, td, th');
-    
+
     allElements.forEach((el, elIndex) => {
       const elText = el.innerText || el.textContent || '';
       if (!elText.trim()) return;
@@ -231,7 +262,11 @@ function highlightText(instance, index) {
         .replace(/[^\w\s]/g, '')
         .toLowerCase();
 
-      if (normalizedElText.includes(normalizedSearch)) {
+      // Check if element contains the search text (or at least the beginning)
+      const searchWords = normalizedSearch.split(' ');
+      const fuzzyStart = searchWords.slice(0, Math.min(5, searchWords.length)).join(' ');
+
+      if (normalizedElText.includes(fuzzyStart)) {
         // Find text nodes within this element
         const elWalker = document.createTreeWalker(
           el,
@@ -243,9 +278,12 @@ function highlightText(instance, index) {
         let elNode;
         while (elNode = elWalker.nextNode()) {
           const elNodeText = elNode.textContent || '';
+          if (!elNodeText.trim()) continue;
+
+          // Try exact match first
           const originalSearch = searchText.replace(/\s+/g, ' ').trim();
           const elMatchIndex = elNodeText.toLowerCase().indexOf(originalSearch.toLowerCase());
-          
+
           if (elMatchIndex !== -1) {
             matches.push({
               node: elNode,
@@ -253,8 +291,53 @@ function highlightText(instance, index) {
               end: elMatchIndex + originalSearch.length,
               text: originalSearch
             });
-            console.log(`[Highlighter] Found match in element ${elIndex} (${el.tagName})`);
-            break; // Only take first match per element
+            console.log(`[Highlighter] Found exact match in element ${elIndex} (${el.tagName})`);
+            break;
+          } else {
+            // Try partial word-by-word match
+            const normalizedElNode = elNodeText.replace(/\s+/g, ' ').replace(/[^\w\s]/g, '').toLowerCase();
+            const fuzzyIndex = normalizedElNode.indexOf(fuzzyStart);
+
+            if (fuzzyIndex !== -1) {
+              // Count how many consecutive words match
+              const nodeWords = normalizedElNode.split(' ');
+              let matchedWords = 0;
+              let startWordIndex = -1;
+
+              for (let i = 0; i < nodeWords.length; i++) {
+                if (nodeWords[i] === searchWords[0]) {
+                  startWordIndex = i;
+                  matchedWords = 1;
+
+                  for (let j = 1; j < searchWords.length && (i + j) < nodeWords.length; j++) {
+                    if (nodeWords[i + j] === searchWords[j]) {
+                      matchedWords++;
+                    } else {
+                      break;
+                    }
+                  }
+
+                  if (matchedWords >= 3) { // Require at least 3 words to match
+                    const originalWords = elNodeText.split(/\s+/);
+                    const matchedText = originalWords.slice(startWordIndex, startWordIndex + matchedWords).join(' ');
+                    const matchStart = elNodeText.toLowerCase().indexOf(matchedText.toLowerCase());
+
+                    if (matchStart !== -1) {
+                      matches.push({
+                        node: elNode,
+                        start: matchStart,
+                        end: matchStart + matchedText.length,
+                        text: matchedText
+                      });
+                      console.log(`[Highlighter] Found ${matchedWords}-word partial match in element ${elIndex} (${el.tagName})`);
+                      break;
+                    }
+                  }
+                }
+              }
+
+              if (matchedWords > 0) break; // Found a match in this element, stop searching its nodes
+            }
           }
         }
       }
