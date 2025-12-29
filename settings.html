@@ -50,6 +50,43 @@
       </div>
     </section>
 
+    <!-- Sentinel Configuration (shown when Sentinel mode is selected) -->
+    <section id="sentinelConfig" class="sentinel-config hidden">
+      <h2>Sentinel Mode Configuration</h2>
+      
+      <div class="config-item">
+        <label for="sentinelDelay">Scan Delay (seconds)</label>
+        <input type="number" id="sentinelDelay" min="1" max="10" value="3">
+        <p class="config-hint">Wait time after page loads before scanning</p>
+      </div>
+
+      <div class="config-item">
+        <label for="sentinelCacheDuration">Cache Duration (hours)</label>
+        <input type="number" id="sentinelCacheDuration" min="1" max="168" value="24">
+        <p class="config-hint">How long to keep cached results (1-168 hours)</p>
+      </div>
+
+      <div class="config-item">
+        <label>Whitelisted Domains</label>
+        <div class="whitelist-container">
+          <div id="whitelistItems" class="whitelist-items"></div>
+          <div class="whitelist-input">
+            <input type="text" id="whitelistInput" placeholder="Enter domain (e.g., example.com)">
+            <button id="addWhitelistBtn" class="add-btn">Add</button>
+          </div>
+        </div>
+        <p class="config-hint">Domains that won't be auto-scanned</p>
+      </div>
+
+      <div class="config-item">
+        <label>Advanced Settings</label>
+        <div class="advanced-settings">
+          <button id="clearCacheBtn" class="action-button clear-cache-btn">Clear Cache</button>
+          <a href="history.html" target="_blank" class="action-button view-history-btn" style="text-decoration: none; display: inline-block;">View History</a>
+        </div>
+      </div>
+    </section>
+
     <!-- Actions -->
     <div class="actions">
       <button id="saveBtn" class="action-button save-btn">Save Settings</button>

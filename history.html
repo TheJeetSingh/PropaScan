@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PropaScan - Analysis History</title>
+  <link rel="stylesheet" href="history.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>Analysis History</h1>
+      <p class="subtitle">All pages analyzed by PropaScan</p>
+    </header>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button id="clearHistoryBtn" class="action-button clear-btn">Clear All History</button>
+      <button id="backBtn" class="action-button back-btn">Back to Main</button>
+      <div class="filter-controls">
+        <select id="filterSeverity" class="filter-select">
+          <option value="all">All Severities</option>
+          <option value="none">None</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="extreme">Extreme</option>
+        </select>
+        <select id="filterTier" class="filter-select">
+          <option value="all">All Tiers</option>
+          <option value="1">Tier 1 (Neutral)</option>
+          <option value="2">Tier 2 (Mild Bias)</option>
+          <option value="3">Tier 3 (Partisan Bias)</option>
+          <option value="4">Tier 4 (Heavy Manipulation)</option>
+          <option value="5">Tier 5 (Disinformation)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-label">Total Analyses:</span>
+        <span id="totalCount" class="stat-value">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Showing:</span>
+        <span id="showingCount" class="stat-value">0</span>
+      </div>
+    </div>
+
+    <!-- History List -->
+    <div id="historyList" class="history-list">
+      <div class="loading-message">Loading history...</div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state hidden">
+      <p>No analysis history yet.</p>
+      <p class="empty-hint">Pages will appear here after being analyzed in Sentinel or Patrol mode.</p>
+    </div>
+  </div>
+  <script src="history.js"></script>
+</body>
+</html>
+

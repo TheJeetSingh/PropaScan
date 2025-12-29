@@ -12,12 +12,20 @@
     <header class="header">
       <div class="header-top">
         <h1>PropaScan</h1>
-        <button id="settingsBtn" class="settings-button" title="Open Settings">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
-          </svg>
-        </button>
+        <div class="header-actions">
+          <button id="historyBtn" class="header-action-btn" title="View History">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M3 9h18M9 3v18"/>
+            </svg>
+          </button>
+          <button id="settingsBtn" class="header-action-btn" title="Open Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+            </svg>
+          </button>
+        </div>
       </div>
       <p class="subtitle">Capture text or screenshots from web pages to analyze</p>
       <p id="currentMode" class="current-mode">Mode: <span id="modeName">Loading...</span></p>

@@ -2,8 +2,20 @@
 // Note: API requests are made via background service worker to avoid CORS issues
 // Configuration is loaded from config.js and passed to background worker
 
+// Get current date for system prompt
+function getCurrentDateString() {
+  return new Date().toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+}
+
 // System prompt for propaganda analysis
-const SYSTEM_PROMPT = `You are a propaganda and manipulation detection expert. Analyze the following content and identify any propaganda techniques, bias, or manipulation being used.
+function getSystemPrompt() {
+  const currentDate = getCurrentDateString();
+  return `You are a propaganda and manipulation detection expert. Analyze the following content and identify any propaganda techniques, bias, or manipulation being used.
 
 CRITICAL CALIBRATION GUIDE:
 
@@ -117,9 +129,33 @@ FINAL CHECK before responding:
 3. Am I distinguishing bias from disinformation?
 4. Would a biased-but-factual article score lower than state propaganda?
 
+IMPORTANT: DATE/TIME AWARENESS
+- The current date is ${currentDate}
+- Your training data may have a cutoff before this date, but that does NOT mean current content is fabricated
+- Do NOT flag content as "fabricated" or "fictional" simply because:
+  - It mentions dates that seem "in the future" to you
+  - It references products, models, or events you don't recognize
+  - It contains technology names you haven't seen before
+- Only flag factual accuracy issues if:
+  - Claims contradict VERIFIED historical facts
+  - Claims are logically impossible
+  - Claims conflict with information IN THE SAME CONTENT
+- Technical dashboards, API logs, and administrative interfaces are NOT propaganda - they are functional UIs
+- Marketing language ("state-of-the-art", "flagship", "best-in-class") in product descriptions is NORMAL commercial speech, not manipulation - score these as Tier 1-2 maximum unless combined with political/ideological content
+
+CONTENT TYPE AWARENESS:
+- API dashboards, settings pages, documentation = NOT propaganda (Tier 1)
+- Product marketing without political angle = mild bias at most (Tier 1-2)
+- News/opinion articles = analyze normally
+- Political content = analyze thoroughly
+
 If no propaganda is detected, explain why the content appears neutral and factual.
 
 CONTENT TO ANALYZE:`;
+}
+
+// For backward compatibility, export a function that generates the prompt
+const SYSTEM_PROMPT = getSystemPrompt();
 
 /**
  * Analyze content using Hack Club AI via background service worker
@@ -136,7 +172,7 @@ async function analyzeContent(textContent = '', imageDataUrl = '') {
         textContent: textContent,
         imageDataUrl: imageDataUrl,
         config: window.PropaScanConfig,
-        systemPrompt: SYSTEM_PROMPT
+        systemPrompt: getSystemPrompt()
       }
     }, (response) => {
       if (chrome.runtime.lastError) {
@@ -157,4 +193,4 @@ async function analyzeContent(textContent = '', imageDataUrl = '') {
 }
 
 // Export for use in popup.js
-window.PropaScanAPI = { analyzeContent, SYSTEM_PROMPT };
+window.PropaScanAPI = { analyzeContent, SYSTEM_PROMPT, getSystemPrompt };

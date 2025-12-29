@@ -44,6 +44,113 @@ function updateModeSelection(selectedMode) {
   if (selectedOption) {
     selectedOption.classList.add('selected');
   }
+
+  // Show/hide Sentinel config panel
+  const sentinelConfig = document.getElementById('sentinelConfig');
+  if (sentinelConfig) {
+    if (selectedMode === 'sentinel') {
+      sentinelConfig.classList.remove('hidden');
+      loadSentinelConfig();
+    } else {
+      sentinelConfig.classList.add('hidden');
+    }
+  }
+}
+
+// Load Sentinel configuration
+async function loadSentinelConfig() {
+  try {
+    // Load delay
+    const delayResult = await chrome.storage.sync.get(['sentinelDelay']);
+    const delayInput = document.getElementById('sentinelDelay');
+    if (delayInput) {
+      delayInput.value = delayResult.sentinelDelay || 3;
+    }
+
+    // Load cache duration
+    const cacheResult = await chrome.storage.sync.get(['sentinelCacheDuration']);
+    const cacheInput = document.getElementById('sentinelCacheDuration');
+    if (cacheInput) {
+      cacheInput.value = cacheResult.sentinelCacheDuration || 24;
+    }
+
+    // Load whitelist
+    await loadWhitelist();
+  } catch (error) {
+    console.error('Error loading Sentinel config:', error);
+  }
+}
+
+// Load whitelist
+async function loadWhitelist() {
+  try {
+    const result = await chrome.storage.sync.get(['sentinelWhitelist']);
+    const whitelist = result.sentinelWhitelist || [];
+    const whitelistItems = document.getElementById('whitelistItems');
+    
+    if (whitelistItems) {
+      whitelistItems.innerHTML = '';
+      whitelist.forEach(domain => {
+        const item = document.createElement('div');
+        item.className = 'whitelist-item';
+        item.innerHTML = `
+          <span>${domain}</span>
+          <button class="remove-whitelist-btn" data-domain="${domain}">×</button>
+        `;
+        whitelistItems.appendChild(item);
+      });
+
+      // Add remove handlers
+      document.querySelectorAll('.remove-whitelist-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const domain = e.target.dataset.domain;
+          await removeFromWhitelist(domain);
+        });
+      });
+    }
+  } catch (error) {
+    console.error('Error loading whitelist:', error);
+  }
+}
+
+// Remove from whitelist
+async function removeFromWhitelist(domain) {
+  try {
+    const result = await chrome.storage.sync.get(['sentinelWhitelist']);
+    const whitelist = result.sentinelWhitelist || [];
+    const filtered = whitelist.filter(d => d !== domain);
+    await chrome.storage.sync.set({ sentinelWhitelist: filtered });
+    await loadWhitelist();
+  } catch (error) {
+    console.error('Error removing from whitelist:', error);
+  }
+}
+
+// Add to whitelist
+async function addToWhitelist(domain) {
+  if (!domain || domain.trim() === '') {
+    return;
+  }
+
+  const cleanDomain = domain.trim().toLowerCase().replace('www.', '');
+  
+  try {
+    const result = await chrome.storage.sync.get(['sentinelWhitelist']);
+    const whitelist = result.sentinelWhitelist || [];
+    
+    if (!whitelist.includes(cleanDomain)) {
+      whitelist.push(cleanDomain);
+      await chrome.storage.sync.set({ sentinelWhitelist: whitelist });
+      await loadWhitelist();
+      
+      const input = document.getElementById('whitelistInput');
+      if (input) {
+        input.value = '';
+      }
+    }
+  } catch (error) {
+    console.error('Error adding to whitelist:', error);
+  }
 }
 
 // Save mode to storage
@@ -57,7 +164,25 @@ async function saveMode() {
   const selectedMode = selectedRadio.value;
   
   try {
+    // Save mode
     await chrome.storage.sync.set({ detectionMode: selectedMode });
+    
+    // Save Sentinel config if Sentinel mode is selected
+    if (selectedMode === 'sentinel') {
+      const delayInput = document.getElementById('sentinelDelay');
+      const cacheInput = document.getElementById('sentinelCacheDuration');
+      
+      if (delayInput) {
+        const delay = parseInt(delayInput.value) || 3;
+        await chrome.storage.sync.set({ sentinelDelay: delay });
+      }
+      
+      if (cacheInput) {
+        const cacheDuration = parseInt(cacheInput.value) || 24;
+        await chrome.storage.sync.set({ sentinelCacheDuration: cacheDuration });
+      }
+    }
+    
     showStatus('Settings saved successfully!', 'success');
     
     // Update visual selection
@@ -77,6 +202,25 @@ async function saveMode() {
     console.error('Error saving mode:', error);
     showStatus('Failed to save settings. Please try again.', 'error');
   }
+}
+
+// Clear cache
+async function clearCache() {
+  try {
+    await chrome.storage.local.set({ sentinelCache: {} });
+    showStatus('Cache cleared successfully!', 'success');
+    setTimeout(() => hideStatus(), 2000);
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    showStatus('Failed to clear cache.', 'error');
+  }
+}
+
+// Reset rate limits (removed - no longer using rate limits)
+// Kept for backward compatibility but does nothing
+async function resetRateLimits() {
+  showStatus('Rate limits have been removed. History-based checking is now used.', 'success');
+  setTimeout(() => hideStatus(), 3000);
 }
 
 // Show status message
@@ -136,5 +280,34 @@ document.addEventListener('DOMContentLoaded', () => {
   if (backBtn) {
     backBtn.addEventListener('click', goBack);
   }
+
+  // Sentinel config handlers
+  const addWhitelistBtn = document.getElementById('addWhitelistBtn');
+  const whitelistInput = document.getElementById('whitelistInput');
+  if (addWhitelistBtn && whitelistInput) {
+    addWhitelistBtn.addEventListener('click', () => {
+      addToWhitelist(whitelistInput.value);
+    });
+    whitelistInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        addToWhitelist(whitelistInput.value);
+      }
+    });
+  }
+
+  const clearCacheBtn = document.getElementById('clearCacheBtn');
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener('click', clearCache);
+  }
+
+  // Rate limits removed - history-based checking is now used
+
+  // Load Sentinel config if Sentinel mode is selected
+  loadCurrentMode().then(() => {
+    const selectedRadio = document.querySelector('input[name="detection-mode"]:checked');
+    if (selectedRadio && selectedRadio.value === 'sentinel') {
+      loadSentinelConfig();
+    }
+  });
 });
 

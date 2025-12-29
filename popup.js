@@ -69,8 +69,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // History button handler
+  const historyBtn = document.getElementById('historyBtn');
+  if (historyBtn) {
+    historyBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('history.html') });
+    });
+  }
+
   // Load and display current mode
   loadCurrentMode();
+
+  // Save config to sync storage for Sentinel mode (background worker needs it)
+  if (window.PropaScanConfig) {
+    chrome.storage.sync.set({ propaScanConfig: window.PropaScanConfig }, () => {
+      console.log('[Popup] Config saved to sync storage for Sentinel mode');
+    });
+  } else {
+    console.warn('[Popup] PropaScanConfig not found - Sentinel mode may not work until popup is opened');
+  }
+
+  // Check for Sentinel mode and load cached results
+  checkSentinelMode();
 
   // Handle select area action (for screenshot)
   async function handleSelectArea() {
@@ -363,7 +383,10 @@ document.addEventListener('DOMContentLoaded', () => {
         previewSection.classList.remove('hidden');
       }
       
-      if (data.analysisStatus === 'in_progress') {
+      // Only show results if results section is not already visible (to avoid conflicts with Sentinel mode)
+      const resultsAlreadyShown = !resultsSection.classList.contains('hidden');
+      
+      if (data.analysisStatus === 'in_progress' && !resultsAlreadyShown) {
         // Analysis is still running in background
         console.log('Analysis in progress, showing loading state');
         resultsSection.classList.remove('hidden');
@@ -389,13 +412,13 @@ document.addEventListener('DOMContentLoaded', () => {
           clearInterval(checkInterval);
         }, 120000);
         
-      } else if (data.analysisResult && data.analysisStatus === 'completed') {
-        // Results are ready
+      } else if (data.analysisResult && data.analysisStatus === 'completed' && !resultsAlreadyShown) {
+        // Results are ready (only show if not already showing Sentinel results)
         console.log('Loading saved analysis results');
         resultsSection.classList.remove('hidden');
         displayResults(data.analysisResult);
-      } else if (data.analysisStatus === 'error') {
-        // Show error if it exists
+      } else if (data.analysisStatus === 'error' && !resultsAlreadyShown) {
+        // Show error if it exists (only if not already showing results)
         resultsSection.classList.remove('hidden');
         showError(data.analysisError || 'Analysis failed');
       }
@@ -605,6 +628,10 @@ document.addEventListener('DOMContentLoaded', () => {
           scanImages: images
         });
 
+        // Store URL and title for history
+        const currentUrl = metadata.url || tab.url;
+        const currentTitle = metadata.title || tab.title || '';
+
         // Send to background for analysis
         // For Patrol Mode, we'll send text + images to API
         // Convert images to a format the API can use
@@ -641,7 +668,9 @@ document.addEventListener('DOMContentLoaded', () => {
           textContent: text, // Make sure text is included!
           imageDataUrl: primaryImage,
           config: window.PropaScanConfig,
-          systemPrompt: window.PropaScanAPI?.SYSTEM_PROMPT || ''
+          systemPrompt: window.PropaScanAPI?.SYSTEM_PROMPT || '',
+          url: currentUrl,
+          title: currentTitle
         }
       }, (response) => {
           if (chrome.runtime.lastError) {
@@ -718,6 +747,251 @@ document.addEventListener('DOMContentLoaded', () => {
     return div.innerHTML;
   }
 
-  // Load saved results when popup opens
-  loadSavedResults();
+  // Check Sentinel mode and load cached results
+  async function checkSentinelMode() {
+    try {
+      const modeResult = await chrome.storage.sync.get(['detectionMode']);
+      if (modeResult.detectionMode !== 'sentinel') {
+        return false; // Not in Sentinel mode, let loadSavedResults handle it
+      }
+
+      // Get current tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.url) {
+        return false;
+      }
+
+      // Check if URL is valid
+      if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        return false;
+      }
+
+      // Check for cached result (returns Promise)
+      return new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          action: 'getCachedResult',
+          url: tab.url
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('[Sentinel] Error getting cached result:', chrome.runtime.lastError);
+            resolve(false);
+            return;
+          }
+
+          if (response && response.success && response.cached) {
+            // Show cached result
+            const cached = response.cached;
+            console.log('[Sentinel] Loading cached result for:', tab.url);
+            
+          // Calculate time since scan
+          const minutesAgo = Math.floor((Date.now() - cached.timestamp) / 1000 / 60);
+          
+          // Get metadata from cached entry if available, otherwise use current tab
+          let metadata = null;
+          if (cached.metadata) {
+            metadata = cached.metadata;
+          } else {
+            // Get from current tab
+            metadata = {
+              url: tab.url,
+              title: tab.title || '',
+              domain: new URL(tab.url).hostname.replace('www.', ''),
+              timestamp: cached.timestamp
+            };
+          }
+          
+          // Display result with timestamp and correct metadata
+          displaySentinelResult(cached.result, minutesAgo, tab.url, metadata);
+          resolve(true); // Sentinel handled it
+          } else {
+            // Check if scan is in progress
+            chrome.storage.local.get(['sentinelCurrentScan'], (data) => {
+              if (data.sentinelCurrentScan) {
+                // Scan in progress
+                showSentinelScanningState();
+                resolve(true); // Sentinel handled it (showing loading state)
+              } else {
+                // No cached result and no scan in progress
+                resolve(false); // Let loadSavedResults handle it
+              }
+            });
+          }
+        });
+      });
+    } catch (error) {
+      console.error('[Sentinel] Error checking mode:', error);
+      return false;
+    }
+  }
+
+  // Display Sentinel mode result
+  function displaySentinelResult(result, minutesAgo, url, metadata = null) {
+    resultsSection.classList.remove('hidden');
+    setLoading(false);
+    
+    // Clear any old scanMetadata to prevent showing wrong metadata
+    chrome.storage.local.remove(['scanMetadata']);
+    
+    // If metadata provided, temporarily set it for displayResults
+    if (metadata) {
+      chrome.storage.local.set({ scanMetadata: metadata });
+    } else {
+      // Try to get metadata from current tab
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          const tabMetadata = {
+            url: url || tabs[0].url,
+            title: tabs[0].title || '',
+            domain: new URL(tabs[0].url).hostname.replace('www.', ''),
+            timestamp: Date.now()
+          };
+          chrome.storage.local.set({ scanMetadata: tabMetadata });
+        }
+      });
+    }
+    
+    // Add timestamp info
+    let html = `<div class="sentinel-info">`;
+    html += `<p class="sentinel-timestamp">Last scanned: ${minutesAgo} minute${minutesAgo !== 1 ? 's' : ''} ago</p>`;
+    html += `<div class="sentinel-actions">`;
+    html += `<button id="rescanBtn" class="action-button rescan-btn">Rescan</button>`;
+    html += `<button id="whitelistBtn" class="action-button whitelist-btn">Add to Whitelist</button>`;
+    html += `</div></div>`;
+
+    // Small delay to ensure metadata is set before displayResults reads it
+    setTimeout(() => {
+      // Display the result
+      displayResults(result).then(() => {
+        // Prepend the Sentinel info
+        const resultsContent = document.getElementById('resultsContent');
+        if (resultsContent) {
+          resultsContent.innerHTML = html + resultsContent.innerHTML;
+          
+          // Add event listeners after DOM update
+          setTimeout(() => {
+            const rescanBtn = document.getElementById('rescanBtn');
+            const whitelistBtn = document.getElementById('whitelistBtn');
+            
+            if (rescanBtn) {
+              rescanBtn.addEventListener('click', async () => {
+                await handleRescan(url);
+              });
+            }
+            
+            if (whitelistBtn) {
+              whitelistBtn.addEventListener('click', async () => {
+                await handleAddToWhitelist(url);
+              });
+            }
+          }, 100);
+        }
+      });
+    }, 50);
+  }
+
+  // Show scanning state
+  function showSentinelScanningState() {
+    resultsSection.classList.remove('hidden');
+    setLoading(true);
+    updateLoadingMessage('Scanning page automatically...');
+  }
+
+  // Check Sentinel status (whitelisted/rate limited)
+  async function checkSentinelStatus(url) {
+    // This would require additional background communication
+    // For now, just show normal UI
+  }
+
+  // Handle rescan
+  async function handleRescan(url) {
+    try {
+      setLoading(true);
+      hideError();
+      resultsSection.classList.remove('hidden');
+      updateLoadingMessage('Rescanning page...');
+
+      chrome.runtime.sendMessage({
+        action: 'rescanPage',
+        url: url
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          setLoading(false);
+          showError('Failed to rescan: ' + chrome.runtime.lastError.message);
+          return;
+        }
+
+        if (response && response.success && response.result) {
+          setLoading(false);
+          displaySentinelResult(response.result, 0, url);
+        } else if (response && response.error) {
+          setLoading(false);
+          showError(response.error);
+        } else {
+          // Poll for result
+          const checkInterval = setInterval(() => {
+            chrome.runtime.sendMessage({
+              action: 'getCachedResult',
+              url: url
+            }, (checkResponse) => {
+              if (checkResponse && checkResponse.success && checkResponse.cached) {
+                clearInterval(checkInterval);
+                setLoading(false);
+                const cached = checkResponse.cached;
+                const metadata = cached.metadata || {
+                  url: url,
+                  title: '',
+                  domain: new URL(url).hostname.replace('www.', ''),
+                  timestamp: cached.timestamp
+                };
+                displaySentinelResult(cached.result, 0, url, metadata);
+              }
+            });
+          }, 1000);
+
+          setTimeout(() => clearInterval(checkInterval), 120000);
+        }
+      });
+    } catch (error) {
+      setLoading(false);
+      showError('Error rescanning: ' + error.message);
+    }
+  }
+
+  // Handle add to whitelist
+  async function handleAddToWhitelist(url) {
+    try {
+      const domain = new URL(url).hostname.replace('www.', '');
+      
+      chrome.runtime.sendMessage({
+        action: 'addToWhitelist',
+        domain: domain
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          showError('Failed to add to whitelist: ' + chrome.runtime.lastError.message);
+          return;
+        }
+
+        if (response && response.success) {
+          showError('Domain added to whitelist. This page will no longer be auto-scanned.');
+          // Clear results since it's whitelisted now
+          setTimeout(() => {
+            clearResults();
+          }, 2000);
+        } else if (response && response.error) {
+          showError(response.error);
+        }
+      });
+    } catch (error) {
+      showError('Error adding to whitelist: ' + error.message);
+    }
+  }
+
+  // Check Sentinel mode first (takes priority)
+  // If not in Sentinel mode or no cached result, then load saved results
+  checkSentinelMode().then((sentinelHandled) => {
+    // Only load old results if Sentinel mode didn't handle it
+    if (!sentinelHandled) {
+      loadSavedResults();
+    }
+  });
 });

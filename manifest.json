@@ -6,6 +6,7 @@
   "action": {
     "default_popup": "popup.html"
   },
+  "options_page": "history.html",
   "background": {
     "service_worker": "background.js"
   },
@@ -15,7 +16,8 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "web_accessible_resources": [
     {
