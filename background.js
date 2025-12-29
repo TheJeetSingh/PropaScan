@@ -160,9 +160,8 @@ const SYSTEM_PROMPT = getSystemPrompt();
 // SENTINEL MODE - Auto-scanning functionality
 // ============================================================================
 
-// Default whitelist of domains to skip scanning
-// Note: Removed wikipedia.org from default - users can add it back if needed
-const DEFAULT_WHITELIST = [
+// Default whitelist domains (used for initializing settings, not hardcoded)
+const DEFAULT_WHITELIST_DOMAINS = [
   'google.com',
   'gmail.com',
   'youtube.com',
@@ -222,7 +221,19 @@ function getDomain(url) {
 async function isDomainWhitelisted(domain) {
   try {
     const result = await chrome.storage.sync.get(['sentinelWhitelist']);
-    const whitelist = result.sentinelWhitelist || DEFAULT_WHITELIST;
+    const whitelist = result.sentinelWhitelist || [];
+    
+    // If whitelist is empty, initialize it with defaults (first time setup)
+    if (whitelist.length === 0) {
+      await chrome.storage.sync.set({ sentinelWhitelist: [...DEFAULT_WHITELIST_DOMAINS] });
+      return DEFAULT_WHITELIST_DOMAINS.some(whitelisted => {
+        if (domain.includes(whitelisted) || whitelisted.includes(domain)) {
+          return true;
+        }
+        return false;
+      });
+    }
+    
     return whitelist.some(whitelisted => {
       if (domain.includes(whitelisted) || whitelisted.includes(domain)) {
         return true;

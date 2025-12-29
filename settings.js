@@ -81,9 +81,47 @@ async function loadSentinelConfig() {
   }
 }
 
+// Default whitelist domains (same as background.js)
+const DEFAULT_WHITELIST_DOMAINS = [
+  'google.com',
+  'gmail.com',
+  'youtube.com',
+  'github.com',
+  'localhost',
+  '127.0.0.1',
+  'amazon.com',
+  'netflix.com',
+  'facebook.com',
+  'twitter.com',
+  'instagram.com',
+  'reddit.com',
+  'stackoverflow.com',
+  'chrome://',
+  'chrome-extension://',
+  'edge://',
+  'about:'
+];
+
+// Initialize whitelist with defaults if empty
+async function initializeWhitelist() {
+  try {
+    const result = await chrome.storage.sync.get(['sentinelWhitelist']);
+    if (!result.sentinelWhitelist || result.sentinelWhitelist.length === 0) {
+      // Initialize with defaults
+      await chrome.storage.sync.set({ sentinelWhitelist: [...DEFAULT_WHITELIST_DOMAINS] });
+      console.log('[Settings] Initialized whitelist with defaults');
+    }
+  } catch (error) {
+    console.error('Error initializing whitelist:', error);
+  }
+}
+
 // Load whitelist
 async function loadWhitelist() {
   try {
+    // Ensure whitelist is initialized
+    await initializeWhitelist();
+    
     const result = await chrome.storage.sync.get(['sentinelWhitelist']);
     const whitelist = result.sentinelWhitelist || [];
     const whitelistItems = document.getElementById('whitelistItems');
@@ -93,8 +131,9 @@ async function loadWhitelist() {
       whitelist.forEach(domain => {
         const item = document.createElement('div');
         item.className = 'whitelist-item';
+        const isDefault = DEFAULT_WHITELIST_DOMAINS.includes(domain);
         item.innerHTML = `
-          <span>${domain}</span>
+          <span>${domain}${isDefault ? ' <span style="color: rgba(255,255,255,0.5); font-size: 11px;">(default)</span>' : ''}</span>
           <button class="remove-whitelist-btn" data-domain="${domain}">×</button>
         `;
         whitelistItems.appendChild(item);
