@@ -868,6 +868,257 @@ async function autoShowHighlights(tabId, instances) {
   }
 }
 
+// Perform Patrol Mode scan (similar to Sentinel but user-initiated)
+async function performPatrolScan(tabId, url) {
+  try {
+    console.log('[Patrol] Starting scan for tab:', tabId, 'URL:', url);
+
+    // Verify tab still exists and URL is valid
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab || !tab.url || (!tab.url.startsWith('http://') && !tab.url.startsWith('https://'))) {
+      console.log('[Patrol] Tab URL is not valid for scanning:', tab?.url);
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: 'Cannot scan this page type'
+      });
+      return;
+    }
+
+    // Mark as in progress
+    await chrome.storage.local.set({
+      [`analysisStatus_${tabId}`]: 'in_progress',
+      [`analysisError_${tabId}`]: null
+    });
+
+    // Inject page extractor with error handling
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['pageExtractor.js']
+      });
+    } catch (injectionError) {
+      console.log('[Patrol] Cannot inject script on this page:', injectionError.message);
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: `Cannot inject script: ${injectionError.message}`
+      });
+      return;
+    }
+
+    // Wait for injection
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Extract content with timeout
+    let extractionResponse;
+    try {
+      extractionResponse = await Promise.race([
+        chrome.tabs.sendMessage(tabId, { action: 'extractPageContent' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+      ]);
+    } catch (msgError) {
+      const error = `Failed to extract page content: ${msgError.message}`;
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
+      });
+      throw new Error(error);
+    }
+
+    if (!extractionResponse || !extractionResponse.success) {
+      const error = 'Failed to extract page content';
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
+      });
+      throw new Error(error);
+    }
+
+    const { text, images, metadata } = extractionResponse.content;
+
+    if (!text || text.trim().length === 0) {
+      const error = 'No text content found on this page';
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
+      });
+      throw new Error(error);
+    }
+
+    console.log(`[Patrol] Extracted ${text.length} characters and ${images.length} images`);
+
+    // Prepare images (limit to 10)
+    const imageDataUrls = [];
+    for (const img of images.slice(0, 10)) {
+      if (img.src && !img.isUrl) {
+        imageDataUrls.push(img.src);
+      }
+    }
+    const primaryImage = imageDataUrls.length > 0 ? imageDataUrls[0] : '';
+
+    // Get config from sync storage
+    const configResult = await chrome.storage.sync.get(['propaScanConfig']);
+    let config = configResult.propaScanConfig;
+
+    if (!config) {
+      config = {
+        HACKCLUB_AI_API_URL: 'https://ai.hackclub.com/proxy/v1/chat/completions',
+        AI_MODEL: 'google/gemini-3-pro-preview',
+        TEMPERATURE: 0.7,
+        MAX_TOKENS: 16000,
+        TOP_P: 1.0,
+        HACK_CLUB_AI_API_KEY: ''
+      };
+      console.warn('[Patrol] Using default config - API key may be missing');
+    }
+
+    // Ensure MAX_TOKENS is at least 16000
+    if (!config.MAX_TOKENS || config.MAX_TOKENS < 16000) {
+      config.MAX_TOKENS = 16000;
+    }
+
+    // Save metadata before analysis
+    const domain = getDomain(url);
+    await chrome.storage.local.set({
+      [`scanMetadata_${tabId}`]: {
+        url: url,
+        title: metadata?.title || tab.title || '',
+        domain: domain,
+        timestamp: Date.now()
+      }
+    });
+
+    // Build API request
+    let userMessage = `CONTENT TO ANALYZE:\n\n`;
+    if (text && text.trim().length > 0) {
+      userMessage += `TEXT:\n${text}\n\n`;
+    }
+    if (primaryImage) {
+      userMessage += `IMAGE:\n[Image is attached below]`;
+    }
+
+    const messages = [
+      {
+        role: 'system',
+        content: getSystemPrompt()
+      }
+    ];
+
+    if (primaryImage && text && text.trim().length > 0) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: userMessage },
+          { type: 'image_url', image_url: { url: primaryImage } }
+        ]
+      });
+    } else if (text && text.trim().length > 0) {
+      messages.push({
+        role: 'user',
+        content: userMessage
+      });
+    }
+
+    // Make API call
+    const apiUrl = config.HACKCLUB_AI_API_URL || 'https://ai.hackclub.com/proxy/v1/chat/completions';
+    const apiKey = config.HACK_CLUB_AI_API_KEY || '';
+    const model = config.AI_MODEL || 'google/gemini-3-pro-preview';
+    const temperature = config.TEMPERATURE || 0.7;
+    const maxTokens = config.MAX_TOKENS || 16000;
+    const topP = config.TOP_P || 1.0;
+
+    if (!apiKey || apiKey === 'your_api_key_here') {
+      const error = 'API key not configured. Please set it in settings.';
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
+      });
+      throw new Error(error);
+    }
+
+    console.log('[Patrol] Sending to AI for analysis...');
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: messages,
+        response_format: { type: 'json_object' },
+        temperature: temperature,
+        max_tokens: maxTokens,
+        top_p: topP
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      const error = `API error: ${response.status} - ${errorData}`;
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
+      });
+      throw new Error(error);
+    }
+
+    const responseData = await response.json();
+    const content = responseData.choices[0]?.message?.content;
+
+    if (!content) {
+      const error = 'No content in API response';
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
+      });
+      throw new Error(error);
+    }
+
+    // Parse JSON
+    let analysisResult;
+    try {
+      analysisResult = JSON.parse(content);
+    } catch (parseError) {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        analysisResult = JSON.parse(jsonMatch[0]);
+      } else {
+        const error = 'Failed to parse JSON response';
+        await chrome.storage.local.set({
+          [`analysisStatus_${tabId}`]: 'error',
+          [`analysisError_${tabId}`]: error
+        });
+        throw new Error(error);
+      }
+    }
+
+    // Save results
+    await chrome.storage.local.set({
+      [`analysisResult_${tabId}`]: analysisResult,
+      [`analysisStatus_${tabId}`]: 'completed',
+      [`analysisError_${tabId}`]: null,
+      [`originalText_${tabId}`]: text,
+      [`originalImage_${tabId}`]: primaryImage
+    });
+
+    // Add to history
+    await addToHistory(url, analysisResult, {
+      title: metadata?.title || tab.title || '',
+      domain: domain
+    });
+
+    console.log('[Patrol] Scan completed successfully');
+
+    return analysisResult;
+
+  } catch (error) {
+    console.error('[Patrol] Scan error:', error);
+    // Error status is already set in catch blocks above
+    throw error;
+  }
+}
+
 // Clean expired cache entries periodically
 setInterval(async () => {
   try {
@@ -919,6 +1170,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analyzeContent') {
     handleAnalyzeRequest(request.data, sendResponse, sender.tab?.id);
     return true; // Keep the message channel open for async response
+  } else if (request.action === 'performPatrolScan') {
+    // Handle Patrol Mode scan in background (survives popup close)
+    performPatrolScan(request.tabId, request.url);
+    sendResponse({ success: true });
+    return true;
   } else if (request.action === 'approveSelection') {
     handleApproveSelection(request.data, request.type, sender.tab?.id);
     sendResponse({ success: true });

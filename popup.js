@@ -820,17 +820,82 @@ document.addEventListener('DOMContentLoaded', () => {
         `selectionType_${currentTabId}`
       ]);
 
-      // Show loading state with clear feedback
+      // Show loading state
       setLoading(true);
       hideError();
       resultsSection.classList.remove('hidden');
-      updateLoadingMessage('Step 1: Scanning page...');
-      
+      updateLoadingMessage('Scanning page...');
+
       // Disable scan button during process
       if (scanPageBtn) {
         scanPageBtn.disabled = true;
         const originalText = scanPageBtn.innerHTML;
         scanPageBtn.innerHTML = '<span style="opacity: 0.7;">Scanning...</span>';
+      }
+
+      // Trigger the scan in background (it will continue even if popup closes)
+      chrome.runtime.sendMessage({
+        action: 'performPatrolScan',
+        tabId: tab.id,
+        url: tab.url
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('[Patrol] Failed to start scan:', chrome.runtime.lastError);
+          setLoading(false);
+          resetScanButton();
+          showError('Failed to start scan: ' + chrome.runtime.lastError.message);
+          return;
+        }
+
+        if (!response || !response.success) {
+          console.error('[Patrol] Scan rejected by background');
+          setLoading(false);
+          resetScanButton();
+          showError('Failed to start scan');
+          return;
+        }
+
+        console.log('[Patrol] Scan started in background, polling for results...');
+        pollForPatrolResults();
+      });
+
+      // Poll for results function (works even if popup was closed and reopened)
+      function pollForPatrolResults() {
+        const checkInterval = setInterval(() => {
+          const pollKeys = [
+            `analysisStatus_${currentTabId}`,
+            `analysisResult_${currentTabId}`,
+            `analysisError_${currentTabId}`
+          ];
+
+          chrome.storage.local.get(pollKeys, (checkData) => {
+            const status = checkData[`analysisStatus_${currentTabId}`];
+            const result = checkData[`analysisResult_${currentTabId}`];
+            const error = checkData[`analysisError_${currentTabId}`];
+
+            if (status === 'completed' && result) {
+              console.log('[Patrol] Analysis completed successfully');
+              clearInterval(checkInterval);
+              setLoading(false);
+              resetScanButton();
+              displayResults(result);
+            } else if (status === 'error') {
+              console.error('[Patrol] Analysis failed:', error);
+              clearInterval(checkInterval);
+              setLoading(false);
+              resetScanButton();
+              showError(error || 'Analysis failed');
+            }
+            // Otherwise keep polling (status is 'in_progress')
+          });
+        }, 1000); // Check every second
+
+        // Stop polling after 3 minutes (timeout)
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          setLoading(false);
+          resetScanButton();
+        }, 180000);
       }
 
       // Inject page extractor script if needed
