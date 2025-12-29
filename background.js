@@ -89,10 +89,14 @@ async function handleApproveSelection(data, type) {
 // Handle area capture - capture full screenshot and send to content script to crop
 async function handleCaptureArea(rect, tabId) {
   try {
-    // Capture the visible tab (full screenshot)
+    // Small delay to ensure any UI elements are removed from DOM
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Capture the visible tab (full screenshot) - no UI should be visible now
     const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
     
     // Send full screenshot and rect to content script for cropping
+    // Content script will show loading overlay when it receives this
     await chrome.tabs.sendMessage(tabId, {
       action: 'cropScreenshot',
       screenshot: dataUrl,

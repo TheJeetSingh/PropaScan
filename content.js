@@ -19,6 +19,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     showApprovalOverlay(request.data, request.type);
     sendResponse({ success: true });
   } else if (request.action === 'cropScreenshot') {
+    // Screenshot has been captured, now show loading overlay and crop
+    showLoadingOverlay();
     cropScreenshot(request.screenshot, request.rect);
     sendResponse({ success: true });
   }
@@ -134,8 +136,8 @@ function handleAreaMouseUp(e) {
       height: height
     };
     
-    // Hide selection rectangle and instructions immediately
-    rect.style.display = 'none';
+    // Remove selection rectangle and instructions from DOM completely
+    rect.remove();
     const overlay = document.getElementById('propascan-selection-overlay');
     if (overlay) {
       overlay.remove();
@@ -144,15 +146,26 @@ function handleAreaMouseUp(e) {
     // Stop selection mode immediately to prevent further interactions
     selectionMode = 'none';
     
-    // Show loading overlay immediately (no delay)
-    showLoadingOverlay();
+    // Remove all event listeners to prevent any UI from appearing
+    document.removeEventListener('mousedown', handleAreaMouseDown, true);
+    document.removeEventListener('mousemove', handleAreaMouseMove, true);
+    document.removeEventListener('mouseup', handleAreaMouseUp, true);
+    document.removeEventListener('keydown', handleEscapeKey);
     
-    // Request screenshot from background (will update overlay when ready)
-    chrome.runtime.sendMessage({
-      action: 'captureArea',
-      rect: selectionRect
-    }, (response) => {
-      // Screenshot will be sent via cropScreenshot message
+    // Use requestAnimationFrame to ensure UI is completely removed from DOM
+    // and browser has had time to repaint before screenshot
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // Request screenshot from background
+        // Background will send 'aboutToCapture' message before capturing,
+        // which will trigger the loading overlay to appear
+        chrome.runtime.sendMessage({
+          action: 'captureArea',
+          rect: selectionRect
+        }, (response) => {
+          // Screenshot will be sent via cropScreenshot message
+        });
+      });
     });
   } else {
     // Selection too small, stop selection
