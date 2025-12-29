@@ -255,24 +255,77 @@ document.addEventListener('DOMContentLoaded', () => {
       `selectionType_${currentTabId}`
     ]);
 
+    // Get current tab info for history
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const currentUrl = tab?.url || '';
+    const currentTitle = tab?.title || '';
+    let currentDomain = '';
+    try {
+      if (currentUrl && (currentUrl.startsWith('http://') || currentUrl.startsWith('https://'))) {
+        currentDomain = new URL(currentUrl).hostname.replace('www.', '');
+      }
+    } catch (e) {
+      console.warn('Could not parse URL for domain:', currentUrl);
+    }
+
     // Save original content and mark analysis as in progress with tab-specific keys
     await chrome.storage.local.set({
       [`analysisStatus_${currentTabId}`]: 'in_progress',
       [`originalImage_${currentTabId}`]: imageDataUrl,
-      [`originalText_${currentTabId}`]: '' // Empty since we're only using images now
+      [`originalText_${currentTabId}`]: '', // Empty since we're only using images now
+      [`scanMetadata_${currentTabId}`]: {
+        url: currentUrl,
+        title: currentTitle,
+        domain: currentDomain,
+        timestamp: Date.now()
+      }
     });
 
     try {
-      // Call the API with image only (empty text since everything is vision-based)
-      // Background worker will save results to storage automatically
-      const result = await window.PropaScanAPI.analyzeContent('', imageDataUrl);
-      
+      // Call the API directly with URL/metadata for history tracking
+      // We bypass the API wrapper to include URL and metadata
+      const analysisPromise = new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          action: 'analyzeContent',
+          data: {
+            textContent: '',
+            imageDataUrl: imageDataUrl,
+            config: window.PropaScanConfig,
+            systemPrompt: window.PropaScanAPI?.getSystemPrompt() || '',
+            url: currentUrl,
+            title: currentTitle,
+            metadata: {
+              url: currentUrl,
+              title: currentTitle,
+              domain: currentDomain,
+              timestamp: Date.now()
+            }
+          }
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          if (response && response.error) {
+            reject(new Error(response.error));
+            return;
+          }
+          if (response && response.result) {
+            resolve(response.result);
+            return;
+          }
+          reject(new Error('Invalid response from background script'));
+        });
+      });
+
+      const result = await analysisPromise;
+
       // Results are already saved by background worker, just display them
       displayResults(result);
     } catch (error) {
       console.error('Analysis error:', error);
       showError(`Analysis failed: ${error.message}`);
-      
+
       // Error is already saved by background worker
     } finally {
       setLoading(false);
@@ -558,9 +611,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Restore original image if it exists (for persistent results)
+      // This includes images from Patrol Mode scans
       if (originalImage && !selectedScreenshot) {
         imagePreview.src = originalImage;
         previewSection.classList.remove('hidden');
+        console.log('[PropaScan] Restored original image from storage');
       }
 
       // Only show results if results section is not already visible (to avoid conflicts with Sentinel mode)
@@ -708,6 +763,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       
+      // Set currentTabId early so it's available for storage operations
+      if (tab && tab.id) {
+        currentTabId = tab.id;
+      }
+      
       if (tab && tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
         // Valid webpage
         if (pageTitle) {
@@ -794,18 +854,58 @@ document.addEventListener('DOMContentLoaded', () => {
       if (needsInjection) {
         // Script not loaded, inject it
         updateLoadingMessage('Step 1: Injecting page extractor...');
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['pageExtractor.js']
-        });
-        // Wait a bit for injection
-        await new Promise(resolve => setTimeout(resolve, 300));
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['pageExtractor.js']
+          });
+        } catch (injectionError) {
+          console.error('[PropaScan] Failed to inject extractor:', injectionError);
+          setLoading(false);
+          resetScanButton();
+          showError(`Cannot inject script on this page: ${injectionError.message}. This might be due to page restrictions.`);
+          return;
+        }
+        
+        // Wait longer for injection and script initialization
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         updateLoadingMessage('Step 2: Extracting content from page...');
-        // Request page extraction from content script
-        chrome.tabs.sendMessage(tab.id, { action: 'extractPageContent' }, async (response) => {
-          handleExtractionResponse(response);
-        });
+        // Request page extraction from content script with retry logic
+        let retries = 3;
+        let extractionSuccess = false;
+        
+        while (retries > 0 && !extractionSuccess) {
+          try {
+            const response = await new Promise((resolve, reject) => {
+              chrome.tabs.sendMessage(tab.id, { action: 'extractPageContent' }, (response) => {
+                if (chrome.runtime.lastError) {
+                  reject(new Error(chrome.runtime.lastError.message));
+                } else {
+                  resolve(response);
+                }
+              });
+            });
+            
+            if (response) {
+              extractionSuccess = true;
+              await handleExtractionResponse(response);
+            } else {
+              throw new Error('No response from content script');
+            }
+          } catch (msgError) {
+            retries--;
+            if (retries > 0) {
+              console.log(`[PropaScan] Extraction message failed, retrying... (${retries} retries left)`);
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              console.error('[PropaScan] Extraction failed after retries:', msgError);
+              setLoading(false);
+              resetScanButton();
+              showError(`Failed to extract page content: ${msgError.message}. Please try again.`);
+            }
+          }
+        }
       }
 
       // Handle extraction response
