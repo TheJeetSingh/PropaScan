@@ -128,20 +128,31 @@ function extractText(contentElement) {
     .replace(/\n\s*\n/g, '\n\n') // Multiple newlines to double newline
     .trim();
 
-  // Cap at 15,000 characters, prioritizing beginning
-  const MAX_LENGTH = 15000;
+  // Cap at 100,000 characters for long articles (Gemini 3 Pro can handle large inputs)
+  // Prioritize beginning content but try to preserve structure
+  const MAX_LENGTH = 100000;
   if (text.length > MAX_LENGTH) {
-    // Try to cut at a sentence boundary
+    console.log(`[PageExtractor] Text exceeds ${MAX_LENGTH} chars (${text.length}), truncating...`);
+    
+    // Try to cut at a paragraph boundary (double newline)
     const truncated = text.substring(0, MAX_LENGTH);
+    const lastParagraph = truncated.lastIndexOf('\n\n');
     const lastPeriod = truncated.lastIndexOf('.');
     const lastNewline = truncated.lastIndexOf('\n');
-    const cutPoint = Math.max(lastPeriod, lastNewline);
+    
+    // Prefer paragraph breaks, then sentence breaks, then line breaks
+    let cutPoint = lastParagraph;
+    if (lastParagraph < MAX_LENGTH * 0.7) {
+      cutPoint = Math.max(lastPeriod, lastNewline);
+    }
     
     if (cutPoint > MAX_LENGTH * 0.8) {
-      text = truncated.substring(0, cutPoint + 1) + '\n\n[Content truncated...]';
+      text = truncated.substring(0, cutPoint + 1) + '\n\n[Content truncated - article is very long. First ~' + Math.round(MAX_LENGTH / 1000) + 'k characters analyzed.]';
     } else {
-      text = truncated + '\n\n[Content truncated...]';
+      text = truncated + '\n\n[Content truncated - article is very long. First ~' + Math.round(MAX_LENGTH / 1000) + 'k characters analyzed.]';
     }
+    
+    console.log(`[PageExtractor] Truncated to ${text.length} characters`);
   }
 
   return text;

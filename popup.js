@@ -176,6 +176,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Overall summary
     html += '<div class="result-summary">';
     html += `<div class="summary-item"><strong>Contains Propaganda:</strong> ${result.contains_propaganda ? 'Yes' : 'No'}</div>`;
+    if (result.tier) {
+      html += `<div class="summary-item"><strong>Tier:</strong> <span class="tier-badge tier-${result.tier}">Tier ${result.tier}</span></div>`;
+      if (result.tier_justification) {
+        html += `<div class="summary-item tier-justification"><strong>Tier Justification:</strong> ${result.tier_justification}</div>`;
+      }
+    }
     html += `<div class="summary-item"><strong>Manipulation Score:</strong> ${result.manipulation_score || 0}/100</div>`;
     html += `<div class="summary-item"><strong>Overall Severity:</strong> <span class="severity-${result.overall_severity || 'none'}">${(result.overall_severity || 'none').toUpperCase()}</span></div>`;
     html += `<div class="summary-item"><strong>Political Leaning:</strong> ${result.political_leaning || 'none'}</div>`;
@@ -192,6 +198,9 @@ document.addEventListener('DOMContentLoaded', () => {
         html += `<p><strong>Tone:</strong> ${result.analysis.text_analysis.tone || 'N/A'}</p>`;
         html += `<p><strong>Framing:</strong> ${result.analysis.text_analysis.framing || 'N/A'}</p>`;
         html += `<p><strong>Missing Context:</strong> ${result.analysis.text_analysis.missing_context || 'N/A'}</p>`;
+        if (result.analysis.text_analysis.factual_accuracy) {
+          html += `<p><strong>Factual Accuracy:</strong> ${result.analysis.text_analysis.factual_accuracy}</p>`;
+        }
         html += '</div>';
       }
 
@@ -217,6 +226,9 @@ document.addEventListener('DOMContentLoaded', () => {
         html += `<div class="instance-header">`;
         html += `<span class="instance-number">#${index + 1}</span>`;
         html += `<span class="technique-tag">${instance.technique}</span>`;
+        if (instance.severity_weight) {
+          html += `<span class="severity-weight severity-${instance.severity_weight}">${instance.severity_weight}</span>`;
+        }
         html += `<span class="confidence-badge confidence-${instance.confidence}">${instance.confidence}</span>`;
         html += `</div>`;
         html += `<div class="instance-element"><strong>Element:</strong> ${instance.element}</div>`;
@@ -596,8 +608,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Send to background for analysis
         // For Patrol Mode, we'll send text + images to API
         // Convert images to a format the API can use
+        // Gemini 3 Pro can handle multiple images, so we'll send more
         const imageDataUrls = [];
-        for (const img of images.slice(0, 5)) { // Limit to 5 images for API
+        for (const img of images.slice(0, 10)) { // Limit to 10 images for API (increased from 5)
           if (img.src && !img.isUrl) {
             imageDataUrls.push(img.src); // Already base64
           }

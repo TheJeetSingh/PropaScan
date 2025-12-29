@@ -22,7 +22,7 @@ const CONFIG = {
   
   // Request Parameters
   TEMPERATURE: 0.7,           // Controls randomness (0.0 to 2.0)
-  MAX_TOKENS: 4000,           // Maximum tokens in response
+  MAX_TOKENS: 16000,          // Maximum tokens in response (increased for comprehensive analysis)
   TOP_P: 1.0,                 // Nucleus sampling parameter (0.0 to 1.0)
   
   // Request Timeout (milliseconds)
