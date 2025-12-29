@@ -456,24 +456,47 @@ async function performSentinelScan(tabId, url) {
   try {
     console.log('[Sentinel] Starting scan for:', url);
 
+    // Verify tab still exists and URL is valid
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab || !tab.url || (!tab.url.startsWith('http://') && !tab.url.startsWith('https://'))) {
+      console.log('[Sentinel] Tab URL is not valid for scanning:', tab?.url);
+      return;
+    }
+
     // Set scanning badge
     updateBadge(tabId, 0, 'scanning');
 
     // Track current scan
     await chrome.storage.local.set({ sentinelCurrentScan: tabId });
 
-    // Inject page extractor
-    await chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ['pageExtractor.js']
-    });
+    // Inject page extractor with error handling
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['pageExtractor.js']
+      });
+    } catch (injectionError) {
+      // Script injection failed (likely due to CSP or restricted page)
+      console.log('[Sentinel] Cannot inject script on this page:', injectionError.message);
+      updateBadge(tabId, 0, 'clear');
+      await chrome.storage.local.remove(['sentinelCurrentScan']);
+      return;
+    }
 
     // Wait for injection
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Extract content
-    const extractionResponse = await chrome.tabs.sendMessage(tabId, { action: 'extractPageContent' });
-    
+    // Extract content with timeout
+    let extractionResponse;
+    try {
+      extractionResponse = await Promise.race([
+        chrome.tabs.sendMessage(tabId, { action: 'extractPageContent' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+      ]);
+    } catch (msgError) {
+      throw new Error(`Failed to communicate with page: ${msgError.message}`);
+    }
+
     if (!extractionResponse || !extractionResponse.success) {
       throw new Error('Failed to extract page content');
     }
@@ -870,12 +893,34 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000); // Run every hour
 
+// Clean up tab-specific storage when tabs are closed
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  try {
+    // Clean up all tab-specific storage for this tab
+    const keysToRemove = [
+      `analysisResult_${tabId}`,
+      `analysisStatus_${tabId}`,
+      `analysisError_${tabId}`,
+      `originalImage_${tabId}`,
+      `originalText_${tabId}`,
+      `scanMetadata_${tabId}`,
+      `selectedScreenshot_${tabId}`,
+      `selectionType_${tabId}`
+    ];
+
+    await chrome.storage.local.remove(keysToRemove);
+    console.log(`[Cleanup] Removed storage for closed tab ${tabId}`);
+  } catch (e) {
+    console.error('[Cleanup] Error cleaning up tab storage:', e);
+  }
+});
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analyzeContent') {
-    handleAnalyzeRequest(request.data, sendResponse);
+    handleAnalyzeRequest(request.data, sendResponse, sender.tab?.id);
     return true; // Keep the message channel open for async response
   } else if (request.action === 'approveSelection') {
-    handleApproveSelection(request.data, request.type);
+    handleApproveSelection(request.data, request.type, sender.tab?.id);
     sendResponse({ success: true });
     return true;
   } else if (request.action === 'captureArea') {
@@ -932,14 +977,14 @@ async function addDomainToWhitelist(domain) {
 }
 
 // Handle approved selection (everything is now screenshot-based)
-async function handleApproveSelection(data, type) {
-  // Save screenshot to storage
+async function handleApproveSelection(data, type, tabId) {
+  // Save screenshot to storage with tab-specific key
   // Popup will pick it up when user reopens it
   await chrome.storage.local.set({
-    selectedScreenshot: data,
-    selectionType: 'screenshot'
+    [`selectedScreenshot_${tabId}`]: data,
+    [`selectionType_${tabId}`]: 'screenshot'
   });
-  console.log('Screenshot saved, user can reopen popup to see it');
+  console.log(`Screenshot saved for tab ${tabId}, user can reopen popup to see it`);
 }
 
 // Handle area capture - capture full screenshot and send to content script to crop
@@ -963,16 +1008,29 @@ async function handleCaptureArea(rect, tabId) {
   }
 }
 
-async function handleAnalyzeRequest(data, sendResponse) {
+async function handleAnalyzeRequest(data, sendResponse, tabId) {
   try {
     const { textContent, imageDataUrl, config } = data;
-    
-    // Mark analysis as in progress and save original content
-    await chrome.storage.local.set({ 
-      analysisStatus: 'in_progress',
-      analysisError: null,
-      originalImage: imageDataUrl || '',
-      originalText: textContent || '' // Save text for Patrol Mode
+
+    // If no tabId provided (e.g., from popup), get current active tab
+    if (!tabId) {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tabs[0]?.id;
+    }
+
+    if (!tabId) {
+      const error = 'Could not determine tab ID for analysis';
+      sendResponse({ error: error });
+      return;
+    }
+
+    // Mark analysis as in progress and save original content with tab-specific keys
+    await chrome.storage.local.set({
+      [`analysisStatus_${tabId}`]: 'in_progress',
+      [`analysisError_${tabId}`]: null,
+      [`originalImage_${tabId}`]: imageDataUrl || '',
+      [`originalText_${tabId}`]: textContent || '', // Save text for Patrol Mode
+      [`scanMetadata_${tabId}`]: data.metadata || null // Save metadata with tab ID
     });
 
     // Load config from storage or use provided config
@@ -990,9 +1048,9 @@ async function handleAnalyzeRequest(data, sendResponse) {
 
     if (!apiKey || apiKey === 'your_api_key_here') {
       const error = 'API key not configured';
-      await chrome.storage.local.set({ 
-        analysisStatus: 'error',
-        analysisError: error
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
       });
       sendResponse({ error: error });
       return;
@@ -1001,9 +1059,9 @@ async function handleAnalyzeRequest(data, sendResponse) {
     // Validate that we have at least text or image
     if (!textContent && !imageDataUrl) {
       const error = 'No content provided for analysis (neither text nor image)';
-      await chrome.storage.local.set({ 
-        analysisStatus: 'error',
-        analysisError: error
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
       });
       sendResponse({ error: error });
       return;
@@ -1083,9 +1141,9 @@ async function handleAnalyzeRequest(data, sendResponse) {
     } else {
       // Neither provided
       const error = 'No content provided for analysis (neither text nor image)';
-      await chrome.storage.local.set({ 
-        analysisStatus: 'error',
-        analysisError: error
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
       });
       sendResponse({ error: error });
       return;
@@ -1118,9 +1176,9 @@ async function handleAnalyzeRequest(data, sendResponse) {
       const errorData = await response.text();
       console.error('Background: API error response:', errorData);
       const errorMsg = `API request failed: ${response.status} ${response.statusText} - ${errorData}`;
-      await chrome.storage.local.set({ 
-        analysisStatus: 'error',
-        analysisError: errorMsg
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: errorMsg
       });
       sendResponse({ error: errorMsg });
       return;
@@ -1133,9 +1191,9 @@ async function handleAnalyzeRequest(data, sendResponse) {
     if (!content) {
       console.error('Background: No content in response:', responseData);
       const errorMsg = 'No content in API response';
-      await chrome.storage.local.set({ 
-        analysisStatus: 'error',
-        analysisError: errorMsg
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: errorMsg
       });
       sendResponse({ error: errorMsg });
       return;
@@ -1145,13 +1203,13 @@ async function handleAnalyzeRequest(data, sendResponse) {
     try {
       const parsed = JSON.parse(content);
       console.log('Background: Successfully parsed JSON response');
-      
-      // Save results to storage (analysis continues in background even if popup closes)
+
+      // Save results to storage with tab-specific keys (analysis continues in background even if popup closes)
       // Original content is already saved above
-      await chrome.storage.local.set({ 
-        analysisResult: parsed,
-        analysisStatus: 'completed',
-        analysisError: null
+      await chrome.storage.local.set({
+        [`analysisResult_${tabId}`]: parsed,
+        [`analysisStatus_${tabId}`]: 'completed',
+        [`analysisError_${tabId}`]: null
       });
       
       // Add to history if we have URL (from Patrol Mode or manual analysis)
@@ -1169,12 +1227,12 @@ async function handleAnalyzeRequest(data, sendResponse) {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        
-        // Save results to storage (original content already saved)
-        await chrome.storage.local.set({ 
-          analysisResult: parsed,
-          analysisStatus: 'completed',
-          analysisError: null
+
+        // Save results to storage with tab-specific keys (original content already saved)
+        await chrome.storage.local.set({
+          [`analysisResult_${tabId}`]: parsed,
+          [`analysisStatus_${tabId}`]: 'completed',
+          [`analysisError_${tabId}`]: null
         });
         
         // Add to history if we have URL
@@ -1188,9 +1246,9 @@ async function handleAnalyzeRequest(data, sendResponse) {
         sendResponse({ result: parsed });
       } else {
         const parseErrorMsg = 'Failed to parse JSON response: ' + parseError.message;
-        await chrome.storage.local.set({ 
-          analysisStatus: 'error',
-          analysisError: parseErrorMsg
+        await chrome.storage.local.set({
+          [`analysisStatus_${tabId}`]: 'error',
+          [`analysisError_${tabId}`]: parseErrorMsg
         });
         sendResponse({ error: parseErrorMsg });
       }
@@ -1202,19 +1260,21 @@ async function handleAnalyzeRequest(data, sendResponse) {
       name: error.name,
       stack: error.stack
     });
-    
+
     // Provide more helpful error messages
     let errorMessage = error.message || 'Unknown error occurred';
     if (error.message.includes('Failed to fetch')) {
       errorMessage = `Network error: Unable to connect to API endpoint. Please verify:\n1. The API endpoint URL is correct\n2. Your internet connection is working\n3. The API key is valid\n\nOriginal error: ${error.message}`;
     }
-    
-    // Save error to storage
-    await chrome.storage.local.set({ 
-      analysisStatus: 'error',
-      analysisError: errorMessage
-    });
-    
+
+    // Save error to storage with tab-specific key (if we have a tabId)
+    if (tabId) {
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: errorMessage
+      });
+    }
+
     sendResponse({ error: errorMessage });
   }
 }

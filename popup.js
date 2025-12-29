@@ -1,6 +1,9 @@
 // PropaScan Extension
 console.log('PropaScan Extension loaded!');
 
+// Global variable to store current tab ID for tab-specific storage
+let currentTabId = null;
+
 document.addEventListener('DOMContentLoaded', () => {
   console.log('Popup DOM loaded');
 
@@ -229,16 +232,34 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Get current tab ID
+    if (!currentTabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTabId = tab?.id;
+    }
+
+    if (!currentTabId) {
+      showError('Could not determine current tab');
+      return;
+    }
+
     // Show loading state
     setLoading(true);
     hideError();
     resultsSection.classList.remove('hidden');
 
-    // Save original content and mark analysis as in progress
-    await chrome.storage.local.set({ 
-      analysisStatus: 'in_progress',
-      originalImage: imageDataUrl,
-      originalText: '' // Empty since we're only using images now
+    // Clear the selected screenshot (it's being consumed for analysis)
+    // This prevents it from reappearing when switching tabs
+    await chrome.storage.local.remove([
+      `selectedScreenshot_${currentTabId}`,
+      `selectionType_${currentTabId}`
+    ]);
+
+    // Save original content and mark analysis as in progress with tab-specific keys
+    await chrome.storage.local.set({
+      [`analysisStatus_${currentTabId}`]: 'in_progress',
+      [`originalImage_${currentTabId}`]: imageDataUrl,
+      [`originalText_${currentTabId}`]: '' // Empty since we're only using images now
     });
 
     try {
@@ -262,10 +283,20 @@ document.addEventListener('DOMContentLoaded', () => {
   async function displayResults(result) {
     let html = '';
 
-    // Load scan metadata if available (Patrol Mode)
+    // Get current tab ID if not already set
+    if (!currentTabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTabId = tab?.id;
+    }
+
+    // Load scan metadata if available (Patrol Mode) using tab-specific key
     const metadata = await new Promise((resolve) => {
-      chrome.storage.local.get(['scanMetadata'], (data) => {
-        resolve(data.scanMetadata || null);
+      if (!currentTabId) {
+        resolve(null);
+        return;
+      }
+      chrome.storage.local.get([`scanMetadata_${currentTabId}`], (data) => {
+        resolve(data[`scanMetadata_${currentTabId}`] || null);
       });
     });
 
@@ -470,80 +501,136 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Clear saved content from storage
-  function clearSavedContent() {
-    chrome.storage.local.remove(['selectedScreenshot', 'selectionType'], () => {
-      console.log('Saved selection cleared');
-    });
+  async function clearSavedContent() {
+    if (!currentTabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTabId = tab?.id;
+    }
+    if (currentTabId) {
+      chrome.storage.local.remove([`selectedScreenshot_${currentTabId}`, `selectionType_${currentTabId}`], () => {
+        console.log('Saved selection cleared for tab', currentTabId);
+      });
+    }
   }
 
   // Load saved results from storage and check for pending analysis
-  function loadSavedResults() {
-    chrome.storage.local.get(['analysisResult', 'analysisStatus', 'analysisError', 'originalImage', 'selectedScreenshot', 'selectionType'], (data) => {
-      // Check if there's a new screenshot from content script
-      if (data.selectedScreenshot && data.selectionType === 'screenshot') {
-        // Clear the selection flag and set the image
-        chrome.storage.local.remove(['selectedScreenshot', 'selectionType']);
-        imagePreview.src = data.selectedScreenshot;
+  async function loadSavedResults() {
+    // Get current tab ID first
+    if (!currentTabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTabId = tab?.id;
+    }
+
+    if (!currentTabId) {
+      console.log('Could not get tab ID for loading results');
+      return;
+    }
+
+    // Use tab-specific storage keys
+    const storageKeys = [
+      `analysisResult_${currentTabId}`,
+      `analysisStatus_${currentTabId}`,
+      `analysisError_${currentTabId}`,
+      `originalImage_${currentTabId}`,
+      `selectedScreenshot_${currentTabId}`,
+      `selectionType_${currentTabId}`
+    ];
+
+    chrome.storage.local.get(storageKeys, (data) => {
+      const analysisResult = data[`analysisResult_${currentTabId}`];
+      const analysisStatus = data[`analysisStatus_${currentTabId}`];
+      const analysisError = data[`analysisError_${currentTabId}`];
+      const originalImage = data[`originalImage_${currentTabId}`];
+      const selectedScreenshot = data[`selectedScreenshot_${currentTabId}`];
+      const selectionType = data[`selectionType_${currentTabId}`];
+
+      // Check if there's a screenshot from content script
+      if (selectedScreenshot && selectionType === 'screenshot') {
+        // Display the screenshot - keep it in storage until user clears or analyzes
+        imagePreview.src = selectedScreenshot;
         previewSection.classList.remove('hidden');
-        // Scroll to preview section
-        setTimeout(() => {
-          previewSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
+        // Scroll to preview section only on first load (when switching from different tab)
+        if (!imagePreview.src || imagePreview.src !== selectedScreenshot) {
+          setTimeout(() => {
+            previewSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 100);
+        }
       }
-      
+
       // Restore original image if it exists (for persistent results)
-      if (data.originalImage && !data.selectedScreenshot) {
-        imagePreview.src = data.originalImage;
+      if (originalImage && !selectedScreenshot) {
+        imagePreview.src = originalImage;
         previewSection.classList.remove('hidden');
       }
-      
+
       // Only show results if results section is not already visible (to avoid conflicts with Sentinel mode)
       const resultsAlreadyShown = !resultsSection.classList.contains('hidden');
-      
-      if (data.analysisStatus === 'in_progress' && !resultsAlreadyShown) {
+
+      if (analysisStatus === 'in_progress' && !resultsAlreadyShown) {
         // Analysis is still running in background
         console.log('Analysis in progress, showing loading state');
         resultsSection.classList.remove('hidden');
         setLoading(true);
-        
+
         // Poll for results (check every second)
         const checkInterval = setInterval(() => {
-          chrome.storage.local.get(['analysisResult', 'analysisStatus', 'analysisError'], (checkData) => {
-            if (checkData.analysisStatus === 'completed' && checkData.analysisResult) {
+          const pollKeys = [
+            `analysisResult_${currentTabId}`,
+            `analysisStatus_${currentTabId}`,
+            `analysisError_${currentTabId}`
+          ];
+          chrome.storage.local.get(pollKeys, (checkData) => {
+            const status = checkData[`analysisStatus_${currentTabId}`];
+            const result = checkData[`analysisResult_${currentTabId}`];
+            const error = checkData[`analysisError_${currentTabId}`];
+
+            if (status === 'completed' && result) {
               clearInterval(checkInterval);
               setLoading(false);
-              displayResults(checkData.analysisResult);
-            } else if (checkData.analysisStatus === 'error') {
+              displayResults(result);
+            } else if (status === 'error') {
               clearInterval(checkInterval);
               setLoading(false);
-              showError(checkData.analysisError || 'Analysis failed');
+              showError(error || 'Analysis failed');
             }
           });
         }, 1000);
-        
+
         // Stop polling after 2 minutes (timeout)
         setTimeout(() => {
           clearInterval(checkInterval);
         }, 120000);
-        
-      } else if (data.analysisResult && data.analysisStatus === 'completed' && !resultsAlreadyShown) {
+
+      } else if (analysisResult && analysisStatus === 'completed' && !resultsAlreadyShown) {
         // Results are ready (only show if not already showing Sentinel results)
         console.log('Loading saved analysis results');
         resultsSection.classList.remove('hidden');
-        displayResults(data.analysisResult);
-      } else if (data.analysisStatus === 'error' && !resultsAlreadyShown) {
+        displayResults(analysisResult);
+      } else if (analysisStatus === 'error' && !resultsAlreadyShown) {
         // Show error if it exists (only if not already showing results)
         resultsSection.classList.remove('hidden');
-        showError(data.analysisError || 'Analysis failed');
+        showError(analysisError || 'Analysis failed');
       }
     });
   }
 
   // Clear saved results from storage
-  function clearSavedResults() {
-    chrome.storage.local.remove(['analysisResult', 'analysisStatus', 'analysisError', 'originalImage'], () => {
-      console.log('Saved analysis results, status, and original content cleared');
-    });
+  async function clearSavedResults() {
+    if (!currentTabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTabId = tab?.id;
+    }
+    if (currentTabId) {
+      chrome.storage.local.remove([
+        `analysisResult_${currentTabId}`,
+        `analysisStatus_${currentTabId}`,
+        `analysisError_${currentTabId}`,
+        `originalImage_${currentTabId}`,
+        `scanMetadata_${currentTabId}`
+      ], () => {
+        console.log('Saved analysis results, status, and original content cleared for tab', currentTabId);
+      });
+    }
   }
 
   // Clear results
@@ -656,11 +743,22 @@ document.addEventListener('DOMContentLoaded', () => {
   async function handleScanPage() {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      
+
       if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
         showError('Page scanning is not available on this page. Please navigate to a regular webpage.');
         return;
       }
+
+      // Set current tab ID
+      if (!currentTabId) {
+        currentTabId = tab.id;
+      }
+
+      // Clear any pending screenshot selections (they're being replaced by page scan)
+      await chrome.storage.local.remove([
+        `selectedScreenshot_${currentTabId}`,
+        `selectionType_${currentTabId}`
+      ]);
 
       // Show loading state with clear feedback
       setLoading(true);
@@ -755,9 +853,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         console.log(`[PropaScan] Extracted ${text.length} characters and ${images.length} images`);
 
-        // Save metadata for display
+        // Get current tab ID
+        if (!currentTabId) {
+          currentTabId = tab.id;
+        }
+
+        // Save metadata for display with tab-specific keys
         await chrome.storage.local.set({
-          scanMetadata: metadata,
+          [`scanMetadata_${currentTabId}`]: metadata,
           scanText: text,
           scanImages: images
         });
@@ -786,12 +889,12 @@ document.addEventListener('DOMContentLoaded', () => {
           imagePreview: primaryImage ? primaryImage.substring(0, 50) + '...' : 'none'
         });
 
-        // Save for analysis
+        // Save for analysis with tab-specific keys
         await chrome.storage.local.set({
-          analysisStatus: 'in_progress',
-          originalText: text,
-          originalImage: primaryImage,
-          scanMetadata: metadata
+          [`analysisStatus_${currentTabId}`]: 'in_progress',
+          [`originalText_${currentTabId}`]: text,
+          [`originalImage_${currentTabId}`]: primaryImage,
+          [`scanMetadata_${currentTabId}`]: metadata
         });
 
       // Trigger analysis via background
@@ -804,7 +907,8 @@ document.addEventListener('DOMContentLoaded', () => {
           config: window.PropaScanConfig,
           systemPrompt: window.PropaScanAPI?.SYSTEM_PROMPT || '',
           url: currentUrl,
-          title: currentTitle
+          title: currentTitle,
+          metadata: metadata // Include full metadata for proper storage
         }
       }, (response) => {
           if (chrome.runtime.lastError) {
@@ -826,21 +930,30 @@ document.addEventListener('DOMContentLoaded', () => {
           console.log('[PropaScan] Analysis started, waiting for results...');
           updateLoadingMessage('Step 4: Waiting for AI analysis results...');
 
-          // Poll for results
+          // Poll for results using tab-specific keys
           const checkInterval = setInterval(async () => {
-            chrome.storage.local.get(['analysisStatus', 'analysisResult', 'analysisError'], (checkData) => {
-              if (checkData.analysisStatus === 'completed' && checkData.analysisResult) {
+            const pollKeys = [
+              `analysisStatus_${currentTabId}`,
+              `analysisResult_${currentTabId}`,
+              `analysisError_${currentTabId}`
+            ];
+            chrome.storage.local.get(pollKeys, (checkData) => {
+              const status = checkData[`analysisStatus_${currentTabId}`];
+              const result = checkData[`analysisResult_${currentTabId}`];
+              const error = checkData[`analysisError_${currentTabId}`];
+
+              if (status === 'completed' && result) {
                 console.log('[PropaScan] Analysis completed successfully');
                 clearInterval(checkInterval);
                 setLoading(false);
                 resetScanButton();
-                displayResults(checkData.analysisResult);
-              } else if (checkData.analysisStatus === 'error') {
-                console.error('[PropaScan] Analysis failed:', checkData.analysisError);
+                displayResults(result);
+              } else if (status === 'error') {
+                console.error('[PropaScan] Analysis failed:', error);
                 clearInterval(checkInterval);
                 setLoading(false);
                 resetScanButton();
-                showError(checkData.analysisError || 'Analysis failed');
+                showError(error || 'Analysis failed');
               }
             });
           }, 1000);
@@ -959,16 +1072,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Display Sentinel mode result
-  function displaySentinelResult(result, minutesAgo, url, metadata = null) {
+  async function displaySentinelResult(result, minutesAgo, url, metadata = null) {
     resultsSection.classList.remove('hidden');
     setLoading(false);
-    
-    // Clear any old scanMetadata to prevent showing wrong metadata
-    chrome.storage.local.remove(['scanMetadata']);
-    
-    // If metadata provided, temporarily set it for displayResults
+
+    // Get current tab ID if not already set
+    if (!currentTabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTabId = tab?.id;
+    }
+
+    if (!currentTabId) {
+      console.error('Could not get tab ID for displaying Sentinel result');
+      return;
+    }
+
+    // If metadata provided, set it with tab-specific key for displayResults
     if (metadata) {
-      chrome.storage.local.set({ scanMetadata: metadata });
+      chrome.storage.local.set({ [`scanMetadata_${currentTabId}`]: metadata });
     } else {
       // Try to get metadata from current tab
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -979,7 +1100,7 @@ document.addEventListener('DOMContentLoaded', () => {
             domain: new URL(tabs[0].url).hostname.replace('www.', ''),
             timestamp: Date.now()
           };
-          chrome.storage.local.set({ scanMetadata: tabMetadata });
+          chrome.storage.local.set({ [`scanMetadata_${currentTabId}`]: tabMetadata });
         }
       });
     }

@@ -129,9 +129,10 @@ function handleAreaMouseUp(e) {
     const top = parseInt(rect.style.top);
     
     // Get the selection bounds relative to viewport
+    // NOTE: Don't add scroll offsets because captureVisibleTab only captures the visible viewport
     selectionRect = {
-      x: left + window.scrollX,
-      y: top + window.scrollY,
+      x: left,
+      y: top,
       width: width,
       height: height
     };
@@ -270,55 +271,77 @@ function showApprovalOverlay(data, type) {
 function cropScreenshot(screenshotDataUrl, rect) {
   const img = new Image();
   img.src = screenshotDataUrl;
-  
+
   img.onload = function() {
     try {
+      console.log('[Screenshot] Image loaded:', {
+        imgWidth: img.width,
+        imgHeight: img.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        rect: rect
+      });
+
       // Create canvas to crop the image
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      
-      // Screenshot dimensions vs viewport dimensions
-      // Screenshots are captured at the device pixel ratio scale
-      const devicePixelRatio = window.devicePixelRatio || 1;
-      
-      // Calculate scale factor: screenshot width / viewport width
+
+      // Calculate scale factor: screenshot dimensions / viewport dimensions
+      // captureVisibleTab captures at device pixel ratio
       const scaleX = img.width / window.innerWidth;
       const scaleY = img.height / window.innerHeight;
-      
-      // Use average scale (should be same, but use average for safety)
-      const scale = (scaleX + scaleY) / 2;
-      
+
+      console.log('[Screenshot] Scale factors:', { scaleX, scaleY });
+
       // Calculate crop coordinates accounting for scale
-      const cropX = rect.x * scale;
-      const cropY = rect.y * scale;
-      const cropWidth = rect.width * scale;
-      const cropHeight = rect.height * scale;
-      
-      // Set canvas size to the selected area (at 1x scale for display)
-      canvas.width = rect.width;
-      canvas.height = rect.height;
-      
+      // rect coordinates are in CSS pixels, need to convert to screenshot pixels
+      const cropX = Math.round(rect.x * scaleX);
+      const cropY = Math.round(rect.y * scaleY);
+      const cropWidth = Math.round(rect.width * scaleX);
+      const cropHeight = Math.round(rect.height * scaleY);
+
+      console.log('[Screenshot] Crop coordinates:', { cropX, cropY, cropWidth, cropHeight });
+
+      // Validate crop coordinates are within screenshot bounds
+      if (cropX < 0 || cropY < 0 || cropX + cropWidth > img.width || cropY + cropHeight > img.height) {
+        console.error('[Screenshot] Crop coordinates out of bounds!', {
+          cropX, cropY, cropWidth, cropHeight,
+          imgWidth: img.width, imgHeight: img.height
+        });
+        // Fallback to full screenshot
+        showApprovalOverlay(screenshotDataUrl, 'screenshot');
+        return;
+      }
+
+      // Set canvas size to match the cropped area at scale
+      // This preserves the quality of the screenshot
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+
       // Draw the cropped portion
       ctx.drawImage(
         img,
-        cropX, cropY, cropWidth, cropHeight,
-        0, 0, rect.width, rect.height
+        cropX, cropY, cropWidth, cropHeight,  // Source rectangle
+        0, 0, cropWidth, cropHeight           // Destination rectangle
       );
-      
+
       // Convert to data URL
       const croppedDataUrl = canvas.toDataURL('image/png');
-      
+
+      console.log('[Screenshot] Cropped successfully');
+
       // Show approval overlay with cropped image
       showApprovalOverlay(croppedDataUrl, 'screenshot');
     } catch (error) {
-      console.error('Error cropping screenshot:', error);
+      console.error('[Screenshot] Error cropping screenshot:', error);
       // Fallback: show full screenshot
       showApprovalOverlay(screenshotDataUrl, 'screenshot');
     }
   };
-  
+
   img.onerror = function() {
-    console.error('Error loading screenshot for cropping');
+    console.error('[Screenshot] Error loading screenshot for cropping');
     // Fallback: show full screenshot
     showApprovalOverlay(screenshotDataUrl, 'screenshot');
   };
