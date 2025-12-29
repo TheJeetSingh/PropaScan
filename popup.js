@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const pageInfoSection = document.getElementById('pageInfoSection');
   const pageTitle = document.getElementById('pageTitle');
   const pageUrl = document.getElementById('pageUrl');
+  const showHighlightsBtn = document.getElementById('showHighlightsBtn');
+  const instanceCount = document.getElementById('instanceCount');
 
   // Load current page info
   loadCurrentPageInfo();
@@ -74,6 +76,93 @@ document.addEventListener('DOMContentLoaded', () => {
   if (historyBtn) {
     historyBtn.addEventListener('click', () => {
       chrome.tabs.create({ url: chrome.runtime.getURL('history.html') });
+    });
+  }
+
+  // Show highlights button handler
+  if (showHighlightsBtn) {
+    let highlightsActive = false;
+    
+    showHighlightsBtn.addEventListener('click', async () => {
+      if (currentInstances.length === 0) {
+        showError('No instances to highlight');
+        return;
+      }
+
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab || !tab.id) {
+          showError('Could not access current tab');
+          return;
+        }
+
+        if (!highlightsActive) {
+          // Inject highlighter script and CSS
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ['highlighter.js']
+            });
+            
+            await chrome.scripting.insertCSS({
+              target: { tabId: tab.id },
+              files: ['highlighter.css']
+            });
+
+            // Wait a bit for injection
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            // Send instances to highlighter
+            console.log('[Popup] Sending instances to highlighter:', currentInstances.length);
+            console.log('[Popup] Instance preview:', currentInstances.map(inst => ({
+              type: inst.element_type,
+              technique: inst.technique,
+              elementPreview: inst.element ? inst.element.substring(0, 50) : 'none'
+            })));
+            
+            chrome.tabs.sendMessage(tab.id, {
+              action: 'showHighlights',
+              instances: currentInstances
+            }, (response) => {
+              if (chrome.runtime.lastError) {
+                console.error('[Popup] Error showing highlights:', chrome.runtime.lastError);
+                showError('Failed to show highlights. Please try again.');
+                return;
+              }
+
+              if (response && response.success) {
+                console.log('[Popup] Highlights shown successfully');
+                highlightsActive = true;
+                showHighlightsBtn.classList.add('active');
+                showHighlightsBtn.textContent = 'Hide Highlights';
+              } else {
+                console.warn('[Popup] No response or response not successful');
+              }
+            });
+          } catch (injectError) {
+            console.error('Error injecting highlighter:', injectError);
+            showError('Failed to inject highlighter. Please refresh the page and try again.');
+          }
+        } else {
+          // Hide highlights
+          chrome.tabs.sendMessage(tab.id, {
+            action: 'hideHighlights'
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('Error hiding highlights:', chrome.runtime.lastError);
+              // Try to clear instead
+              chrome.tabs.sendMessage(tab.id, { action: 'clearHighlights' }).catch(() => {});
+            }
+
+            highlightsActive = false;
+            showHighlightsBtn.classList.remove('active');
+            showHighlightsBtn.textContent = 'Show on Page';
+          });
+        }
+      } catch (error) {
+        console.error('Error toggling highlights:', error);
+        showError('Failed to toggle highlights: ' + error.message);
+      }
     });
   }
 
@@ -301,6 +390,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     resultsContent.innerHTML = html;
+    
+    // Update instance count and show highlights button
+    updateInstanceCount(result.instances || []);
+  }
+  
+  // Store current instances for highlighting
+  let currentInstances = [];
+  
+  // Update instance count display
+  function updateInstanceCount(instances) {
+    if (!instanceCount || !showHighlightsBtn) return;
+    
+    const count = instances.length;
+    if (count > 0) {
+      instanceCount.textContent = `${count} instance${count !== 1 ? 's' : ''} found`;
+      instanceCount.classList.remove('hidden');
+      showHighlightsBtn.classList.remove('hidden');
+      
+      // Store instances for highlighting
+      currentInstances = instances;
+    } else {
+      instanceCount.classList.add('hidden');
+      showHighlightsBtn.classList.add('hidden');
+      currentInstances = [];
+    }
   }
 
   // Set loading state
@@ -439,6 +553,26 @@ document.addEventListener('DOMContentLoaded', () => {
     hideError();
     setLoading(false);
     clearSavedResults();
+    
+    // Clear highlights if active
+    if (showHighlightsBtn && showHighlightsBtn.classList.contains('active')) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          chrome.tabs.sendMessage(tabs[0].id, { action: 'clearHighlights' });
+        }
+      });
+      showHighlightsBtn.classList.remove('active');
+      showHighlightsBtn.textContent = 'Show on Page';
+    }
+    
+    // Reset instance count
+    if (instanceCount) {
+      instanceCount.classList.add('hidden');
+    }
+    if (showHighlightsBtn) {
+      showHighlightsBtn.classList.add('hidden');
+    }
+    currentInstances = [];
   }
 
   // Load current detection mode from storage

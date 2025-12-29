@@ -630,6 +630,12 @@ async function performSentinelScan(tabId, url) {
     await chrome.storage.local.remove(['sentinelCurrentScan']);
 
     console.log('[Sentinel] Scan completed, score:', score);
+    
+    // Auto-show highlights if instances found
+    if (analysisResult.instances && analysisResult.instances.length > 0) {
+      setTimeout(() => autoShowHighlights(tabId, analysisResult.instances), 1000);
+    }
+    
     return analysisResult;
 
   } catch (error) {
@@ -639,6 +645,9 @@ async function performSentinelScan(tabId, url) {
     throw error;
   }
 }
+
+// Track scans in progress to prevent duplicates
+const scansInProgress = new Map(); // URL -> timeout ID
 
 // Handle navigation updates (Sentinel Mode)
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
@@ -662,9 +671,15 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
       return;
     }
 
-    const url = tab.url;
+    const url = normalizeUrl(tab.url);
     const domain = getDomain(url);
     console.log('[Sentinel] Domain:', domain);
+
+    // Check if scan already in progress for this URL
+    if (scansInProgress.has(url)) {
+      console.log('[Sentinel] Scan already in progress for this URL, skipping');
+      return;
+    }
 
     // Check whitelist
     const whitelisted = await isDomainWhitelisted(domain);
@@ -679,6 +694,22 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (recentCheck.analyzed) {
       console.log('[Sentinel] URL analyzed recently, using history result');
       updateBadge(tabId, recentCheck.entry.score, 'complete');
+      
+      // Auto-show highlights if instances exist
+      // Note: history entry stores result as 'result', not 'analysisResult'
+      const analysisResult = recentCheck.entry.result || recentCheck.entry.analysisResult;
+      console.log('[Sentinel] Checking for instances in history result:', {
+        hasResult: !!analysisResult,
+        hasInstances: !!(analysisResult && analysisResult.instances),
+        instanceCount: analysisResult && analysisResult.instances ? analysisResult.instances.length : 0
+      });
+      
+      if (analysisResult && analysisResult.instances && analysisResult.instances.length > 0) {
+        console.log('[Sentinel] Auto-showing highlights for', analysisResult.instances.length, 'instances from history');
+        setTimeout(() => autoShowHighlights(tabId, analysisResult.instances), 2000);
+      } else {
+        console.log('[Sentinel] No instances found in history result, skipping auto-highlight');
+      }
       return;
     }
 
@@ -687,12 +718,15 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     const delay = delayResult.sentinelDelay || 3;
     console.log('[Sentinel] Will scan in', delay, 'seconds');
     
-    setTimeout(async () => {
+    // Mark scan as in progress
+    const timeoutId = setTimeout(async () => {
       // Check if tab still exists and URL hasn't changed
       try {
         const currentTab = await chrome.tabs.get(tabId);
-        if (currentTab.url !== url) {
+        const currentUrl = normalizeUrl(currentTab.url);
+        if (currentUrl !== url) {
           console.log('[Sentinel] URL changed, cancelling scan');
+          scansInProgress.delete(url);
           return;
         }
 
@@ -700,22 +734,116 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         const modeCheck = await chrome.storage.sync.get(['detectionMode']);
         if (modeCheck.detectionMode !== 'sentinel') {
           console.log('[Sentinel] Mode changed, cancelling scan');
+          scansInProgress.delete(url);
           return;
         }
 
         console.log('[Sentinel] Starting scan after delay');
         // Perform scan
-        await performSentinelScan(tabId, url);
+        const result = await performSentinelScan(tabId, currentTab.url);
+        
+        // Auto-show highlights if instances found
+        if (result && result.instances && result.instances.length > 0) {
+          setTimeout(() => autoShowHighlights(tabId, result.instances), 1000);
+        }
+        
+        // Remove from in-progress map
+        scansInProgress.delete(url);
       } catch (e) {
         // Tab might have been closed
         console.log('[Sentinel] Tab no longer available:', e.message);
+        scansInProgress.delete(url);
       }
     }, delay * 1000);
+    
+    scansInProgress.set(url, timeoutId);
 
   } catch (error) {
     console.error('[Sentinel] Error in navigation listener:', error);
   }
 });
+
+// Auto-show highlights on page after scan
+async function autoShowHighlights(tabId, instances) {
+  try {
+    if (!instances || instances.length === 0) {
+      console.log('[Sentinel] No instances to highlight');
+      return;
+    }
+
+    console.log('[Sentinel] Auto-showing highlights for', instances.length, 'instances');
+    
+    // Wait a bit longer to ensure page is fully loaded
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Check if tab still exists
+    try {
+      await chrome.tabs.get(tabId);
+    } catch (e) {
+      console.log('[Sentinel] Tab no longer exists, skipping auto-highlight');
+      return;
+    }
+    
+    // Inject highlighter script and CSS
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['highlighter.js']
+      });
+      
+      await chrome.scripting.insertCSS({
+        target: { tabId: tabId },
+        files: ['highlighter.css']
+      });
+
+      // Wait for injection
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Send instances to highlighter with retry
+      let retries = 3;
+      let success = false;
+      
+      while (retries > 0 && !success) {
+        chrome.tabs.sendMessage(tabId, {
+          action: 'showHighlights',
+          instances: instances
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            const errorMsg = chrome.runtime.lastError.message || String(chrome.runtime.lastError);
+            console.error('[Sentinel] Error auto-showing highlights (attempt', 4 - retries, '):', errorMsg);
+            retries--;
+            if (retries > 0) {
+              setTimeout(() => {
+                chrome.tabs.sendMessage(tabId, {
+                  action: 'showHighlights',
+                  instances: instances
+                }, (retryResponse) => {
+                  if (!chrome.runtime.lastError && retryResponse && retryResponse.success) {
+                    console.log('[Sentinel] Highlights auto-shown successfully on retry');
+                    success = true;
+                  }
+                });
+              }, 1000);
+            }
+            return;
+          }
+          if (response && response.success) {
+            console.log('[Sentinel] Highlights auto-shown successfully');
+            success = true;
+          }
+        });
+        
+        if (success) break;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        retries--;
+      }
+    } catch (injectError) {
+      console.error('[Sentinel] Error injecting highlighter:', injectError);
+    }
+  } catch (error) {
+    console.error('[Sentinel] Error in autoShowHighlights:', error);
+  }
+}
 
 // Clean expired cache entries periodically
 setInterval(async () => {

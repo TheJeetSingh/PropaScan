@@ -82,7 +82,13 @@
 
     <!-- Results Section -->
     <section id="resultsSection" class="results-section hidden">
-      <h2>Analysis Results</h2>
+      <div class="results-header">
+        <h2>Analysis Results</h2>
+        <div class="results-actions">
+          <span id="instanceCount" class="instance-count hidden">0 instances found</span>
+          <button id="showHighlightsBtn" class="action-button show-highlights-btn hidden">Show on Page</button>
+        </div>
+      </div>
       <div id="loadingIndicator" class="loading hidden">
         <div class="spinner"></div>
         <p>Analyzing content...</p>
