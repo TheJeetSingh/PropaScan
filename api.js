@@ -97,4 +97,4 @@ async function analyzeContent(textContent = '', imageDataUrl = '') {
 }
 
 // Export for use in popup.js
-window.PropaScanAPI = { analyzeContent };
+window.PropaScanAPI = { analyzeContent, SYSTEM_PROMPT };

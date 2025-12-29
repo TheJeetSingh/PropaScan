@@ -23,10 +23,26 @@
       <p id="currentMode" class="current-mode">Mode: <span id="modeName">Loading...</span></p>
     </header>
 
+    <!-- Page Info Section (Patrol Mode) -->
+    <section id="pageInfoSection" class="page-info-section hidden">
+      <div class="page-info">
+        <p class="page-title" id="pageTitle">Loading page info...</p>
+        <p class="page-url" id="pageUrl">—</p>
+      </div>
+    </section>
+
     <!-- Capture Options Section -->
     <section class="capture-section">
       <h2>Capture from Page</h2>
       <div class="capture-buttons">
+        <button id="scanPageBtn" class="capture-button patrol-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          Scan This Page
+        </button>
         <button id="selectAreaBtn" class="capture-button">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -36,7 +52,7 @@
           Capture Screenshot
         </button>
       </div>
-      <p class="capture-hint">Select an area to capture (works for text, images, or both)</p>
+      <p class="capture-hint">Scan entire page or select a specific area</p>
     </section>
 
     <!-- Preview Section -->

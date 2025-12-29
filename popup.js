@@ -16,34 +16,58 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingIndicator = document.getElementById('loadingIndicator');
   const errorMessage = document.getElementById('errorMessage');
   const selectAreaBtn = document.getElementById('selectAreaBtn');
+  const scanPageBtn = document.getElementById('scanPageBtn');
   const settingsBtn = document.getElementById('settingsBtn');
   const modeName = document.getElementById('modeName');
+  const pageInfoSection = document.getElementById('pageInfoSection');
+  const pageTitle = document.getElementById('pageTitle');
+  const pageUrl = document.getElementById('pageUrl');
+
+  // Load current page info
+  loadCurrentPageInfo();
+
+  // Scan page (Patrol Mode) button handler
+  if (scanPageBtn) {
+    scanPageBtn.addEventListener('click', async () => {
+      await handleScanPage();
+    });
+  }
 
   // Select area (screenshot) button handler
-  selectAreaBtn.addEventListener('click', async () => {
-    await handleSelectArea();
-  });
+  if (selectAreaBtn) {
+    selectAreaBtn.addEventListener('click', async () => {
+      await handleSelectArea();
+    });
+  }
 
   // Analyze button handler
-  analyzeBtn.addEventListener('click', async () => {
-    await handleAnalyze();
-  });
+  if (analyzeBtn) {
+    analyzeBtn.addEventListener('click', async () => {
+      await handleAnalyze();
+    });
+  }
 
   // Clear preview button handler
-  clearPreviewBtn.addEventListener('click', () => {
-    clearPreview();
-  });
+  if (clearPreviewBtn) {
+    clearPreviewBtn.addEventListener('click', () => {
+      clearPreview();
+    });
+  }
 
   // Clear all button handler
-  clearAllBtn.addEventListener('click', () => {
-    clearPreview();
-    clearResults();
-  });
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', () => {
+      clearPreview();
+      clearResults();
+    });
+  }
 
   // Settings button handler
-  settingsBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
-  });
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
+    });
+  }
 
   // Load and display current mode
   loadCurrentMode();
@@ -126,8 +150,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Display analysis results
-  function displayResults(result) {
+  async function displayResults(result) {
     let html = '';
+
+    // Load scan metadata if available (Patrol Mode)
+    const metadata = await new Promise((resolve) => {
+      chrome.storage.local.get(['scanMetadata'], (data) => {
+        resolve(data.scanMetadata || null);
+      });
+    });
+
+    // Show source info if available (Patrol Mode)
+    if (metadata) {
+      html += '<div class="source-info">';
+      html += `<p class="source-title"><strong>Scanned:</strong> ${escapeHtml(metadata.title || 'Untitled Page')}</p>`;
+      html += `<p class="source-url"><strong>URL:</strong> <a href="${escapeHtml(metadata.url)}" target="_blank" class="source-link">${escapeHtml(metadata.url)}</a></p>`;
+      html += `<p class="source-domain"><strong>Domain:</strong> ${escapeHtml(metadata.domain || 'Unknown')}</p>`;
+      if (metadata.timestamp) {
+        const scanDate = new Date(metadata.timestamp);
+        html += `<p class="source-time"><strong>Scanned:</strong> ${scanDate.toLocaleString()}</p>`;
+      }
+      html += '</div>';
+    }
 
     // Overall summary
     html += '<div class="result-summary">';
@@ -235,14 +279,36 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       loadingIndicator.classList.add('hidden');
     }
-    analyzeBtn.disabled = isLoading;
+    if (analyzeBtn) {
+      analyzeBtn.disabled = isLoading;
+    }
+  }
+
+  // Update loading message
+  function updateLoadingMessage(message) {
+    const loadingText = loadingIndicator.querySelector('p');
+    if (loadingText) {
+      loadingText.textContent = message;
+    }
+    console.log('[PropaScan]', message);
   }
 
   // Show error message
   function showError(message) {
-    errorMessage.textContent = message;
-    errorMessage.classList.remove('hidden');
-    resultsContent.innerHTML = '';
+    console.error('[PropaScan] Error:', message);
+    if (errorMessage) {
+      errorMessage.textContent = message;
+      errorMessage.classList.remove('hidden');
+    }
+    if (resultsContent) {
+      resultsContent.innerHTML = '';
+    }
+    // Scroll to error message
+    if (errorMessage) {
+      setTimeout(() => {
+        errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
   }
 
   // Hide error message
@@ -380,6 +446,264 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   });
+
+  // Load current page info
+  async function loadCurrentPageInfo() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      if (tab && tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+        // Valid webpage
+        if (pageTitle) {
+          pageTitle.textContent = tab.title || 'Untitled Page';
+        }
+        if (pageUrl) {
+          pageUrl.textContent = tab.url;
+        }
+        if (pageInfoSection) {
+          pageInfoSection.classList.remove('hidden');
+        }
+        if (scanPageBtn) {
+          scanPageBtn.disabled = false;
+        }
+      } else {
+        // Not a valid webpage
+        if (pageInfoSection) {
+          pageInfoSection.classList.add('hidden');
+        }
+        if (scanPageBtn) {
+          scanPageBtn.disabled = true;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading page info:', error);
+      if (pageInfoSection) {
+        pageInfoSection.classList.add('hidden');
+      }
+    }
+  }
+
+  // Handle scan page action (Patrol Mode)
+  async function handleScanPage() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        showError('Page scanning is not available on this page. Please navigate to a regular webpage.');
+        return;
+      }
+
+      // Show loading state with clear feedback
+      setLoading(true);
+      hideError();
+      resultsSection.classList.remove('hidden');
+      updateLoadingMessage('Step 1: Scanning page...');
+      
+      // Disable scan button during process
+      if (scanPageBtn) {
+        scanPageBtn.disabled = true;
+        const originalText = scanPageBtn.innerHTML;
+        scanPageBtn.innerHTML = '<span style="opacity: 0.7;">Scanning...</span>';
+      }
+
+      // Inject page extractor script if needed
+      let needsInjection = true;
+      try {
+        // Try to send message first (script might already be loaded)
+        updateLoadingMessage('Step 1: Checking if extractor is ready...');
+        const testResponse = await chrome.tabs.sendMessage(tab.id, { action: 'extractPageContent' });
+        if (testResponse && testResponse.success) {
+          // Script is loaded and we got a response, use it
+          needsInjection = false;
+          updateLoadingMessage('Step 2: Extracting content from page...');
+          handleExtractionResponse(testResponse);
+        }
+      } catch (injectError) {
+        // Script not loaded, will inject below
+        console.log('[PropaScan] Extractor not loaded, injecting...');
+        needsInjection = true;
+      }
+
+      if (needsInjection) {
+        // Script not loaded, inject it
+        updateLoadingMessage('Step 1: Injecting page extractor...');
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['pageExtractor.js']
+        });
+        // Wait a bit for injection
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        updateLoadingMessage('Step 2: Extracting content from page...');
+        // Request page extraction from content script
+        chrome.tabs.sendMessage(tab.id, { action: 'extractPageContent' }, async (response) => {
+          handleExtractionResponse(response);
+        });
+      }
+
+      // Handle extraction response
+      async function handleExtractionResponse(response) {
+        if (chrome.runtime.lastError) {
+          console.error('[PropaScan] Error extracting page:', chrome.runtime.lastError);
+          setLoading(false);
+          resetScanButton();
+          showError(`Failed to extract page content: ${chrome.runtime.lastError.message}. Please try again.`);
+          return;
+        }
+
+        if (!response || !response.success) {
+          console.error('[PropaScan] Extraction failed:', response?.error);
+          setLoading(false);
+          resetScanButton();
+          showError(response?.error || 'Failed to extract page content. Please try again.');
+          return;
+        }
+
+        console.log('[PropaScan] Content extracted successfully');
+        updateLoadingMessage('Step 3: Analyzing content with AI...');
+
+        const { text, images, metadata } = response.content;
+
+        // Debug logging
+        console.log('[PropaScan] Extracted text length:', text?.length || 0);
+        console.log('[PropaScan] First 500 chars:', text?.substring(0, 500) || 'NO TEXT');
+        console.log('[PropaScan] Number of images:', images?.length || 0);
+        console.log('[PropaScan] Full extraction response:', { 
+          textLength: text?.length, 
+          imageCount: images?.length,
+          hasText: !!text && text.trim().length > 0,
+          hasImages: !!images && images.length > 0
+        });
+
+        // Validate we have content
+        if (!text || text.trim().length === 0) {
+          console.warn('[PropaScan] No text content found');
+          setLoading(false);
+          resetScanButton();
+          showError('No text content found on this page. Please try a different page or use the screenshot feature.');
+          return;
+        }
+
+        console.log(`[PropaScan] Extracted ${text.length} characters and ${images.length} images`);
+
+        // Save metadata for display
+        await chrome.storage.local.set({
+          scanMetadata: metadata,
+          scanText: text,
+          scanImages: images
+        });
+
+        // Send to background for analysis
+        // For Patrol Mode, we'll send text + images to API
+        // Convert images to a format the API can use
+        const imageDataUrls = [];
+        for (const img of images.slice(0, 5)) { // Limit to 5 images for API
+          if (img.src && !img.isUrl) {
+            imageDataUrls.push(img.src); // Already base64
+          }
+        }
+
+        // Use the first image if available, otherwise send text only
+        const primaryImage = imageDataUrls.length > 0 ? imageDataUrls[0] : '';
+
+        console.log('[PropaScan] Sending to API:', {
+          textLength: text.length,
+          hasImage: !!primaryImage,
+          imagePreview: primaryImage ? primaryImage.substring(0, 50) + '...' : 'none'
+        });
+
+        // Save for analysis
+        await chrome.storage.local.set({
+          analysisStatus: 'in_progress',
+          originalText: text,
+          originalImage: primaryImage,
+          scanMetadata: metadata
+        });
+
+      // Trigger analysis via background
+      updateLoadingMessage('Step 3: Sending to AI for analysis...');
+      chrome.runtime.sendMessage({
+        action: 'analyzeContent',
+        data: {
+          textContent: text, // Make sure text is included!
+          imageDataUrl: primaryImage,
+          config: window.PropaScanConfig,
+          systemPrompt: window.PropaScanAPI?.SYSTEM_PROMPT || ''
+        }
+      }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('[PropaScan] Failed to start analysis:', chrome.runtime.lastError);
+            setLoading(false);
+            resetScanButton();
+            showError('Failed to start analysis: ' + chrome.runtime.lastError.message);
+            return;
+          }
+
+          if (response && response.error) {
+            console.error('[PropaScan] Analysis error:', response.error);
+            setLoading(false);
+            resetScanButton();
+            showError(response.error);
+            return;
+          }
+
+          console.log('[PropaScan] Analysis started, waiting for results...');
+          updateLoadingMessage('Step 4: Waiting for AI analysis results...');
+
+          // Poll for results
+          const checkInterval = setInterval(async () => {
+            chrome.storage.local.get(['analysisStatus', 'analysisResult', 'analysisError'], (checkData) => {
+              if (checkData.analysisStatus === 'completed' && checkData.analysisResult) {
+                console.log('[PropaScan] Analysis completed successfully');
+                clearInterval(checkInterval);
+                setLoading(false);
+                resetScanButton();
+                displayResults(checkData.analysisResult);
+              } else if (checkData.analysisStatus === 'error') {
+                console.error('[PropaScan] Analysis failed:', checkData.analysisError);
+                clearInterval(checkInterval);
+                setLoading(false);
+                resetScanButton();
+                showError(checkData.analysisError || 'Analysis failed');
+              }
+            });
+          }, 1000);
+
+          // Stop polling after 2 minutes
+          setTimeout(() => {
+            clearInterval(checkInterval);
+          }, 120000);
+        });
+      }
+    } catch (error) {
+      console.error('[PropaScan] Error scanning page:', error);
+      setLoading(false);
+      resetScanButton();
+      showError('Error scanning page: ' + error.message);
+    }
+  }
+
+  // Reset scan button to original state
+  function resetScanButton() {
+    if (scanPageBtn) {
+      scanPageBtn.disabled = false;
+      scanPageBtn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
+        </svg>
+        Scan This Page
+      `;
+    }
+  }
+
+  // Escape HTML to prevent XSS
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 
   // Load saved results when popup opens
   loadSavedResults();

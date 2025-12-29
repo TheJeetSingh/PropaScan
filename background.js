@@ -72,7 +72,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     handleCaptureArea(request.rect, sender.tab.id);
     sendResponse({ success: true });
     return true;
+  } else if (request.action === 'extractPageContent') {
+    // This is handled by content script, but we can forward it
+    // The content script will respond directly
+    return true;
   }
+  return false;
 });
 
 // Handle approved selection (everything is now screenshot-based)
@@ -112,12 +117,11 @@ async function handleAnalyzeRequest(data, sendResponse) {
     const { textContent, imageDataUrl, config } = data;
     
     // Mark analysis as in progress and save original content
-    // Everything is now vision-based, so only save image
     await chrome.storage.local.set({ 
       analysisStatus: 'in_progress',
       analysisError: null,
       originalImage: imageDataUrl || '',
-      originalText: '' // Always empty since everything is vision-based
+      originalText: textContent || '' // Save text for Patrol Mode
     });
 
     // Load config from storage or use provided config
@@ -143,9 +147,9 @@ async function handleAnalyzeRequest(data, sendResponse) {
       return;
     }
 
-    // Validate that we have an image (everything is now vision-based)
-    if (!imageDataUrl) {
-      const error = 'No image provided for analysis';
+    // Validate that we have at least text or image
+    if (!textContent && !imageDataUrl) {
+      const error = 'No content provided for analysis (neither text nor image)';
       await chrome.storage.local.set({ 
         analysisStatus: 'error',
         analysisError: error
@@ -153,9 +157,29 @@ async function handleAnalyzeRequest(data, sendResponse) {
       sendResponse({ error: error });
       return;
     }
+    
+    // For Patrol Mode, text is required
+    if (!textContent || textContent.trim().length === 0) {
+      console.warn('[Background] No text content - this might be a screenshot-only analysis');
+    }
 
-    // Build the user message - everything is image-based now
-    const userMessage = `CONTENT TO ANALYZE:\n\nIMAGE:\n[Image is attached below]`;
+    // Build the user message - include text if provided
+    let userMessage = `CONTENT TO ANALYZE:\n\n`;
+    
+    if (textContent && textContent.trim().length > 0) {
+      userMessage += `TEXT:\n${textContent}\n\n`;
+      console.log('[Background] Text content length:', textContent.length);
+      console.log('[Background] Text preview (first 500 chars):', textContent.substring(0, 500));
+    } else {
+      console.warn('[Background] No text content provided');
+    }
+    
+    if (imageDataUrl) {
+      userMessage += `IMAGE:\n[Image is attached below]`;
+      console.log('[Background] Image provided:', imageDataUrl.substring(0, 50) + '...');
+    } else {
+      console.warn('[Background] No image provided');
+    }
 
     // Prepare messages
     const messages = [
@@ -165,8 +189,8 @@ async function handleAnalyzeRequest(data, sendResponse) {
       }
     ];
 
-    // If image is provided, use vision format
-    if (imageDataUrl) {
+    // If both text and image are provided, use vision format with text
+    if (imageDataUrl && textContent && textContent.trim().length > 0) {
       messages.push({
         role: 'user',
         content: [
@@ -182,11 +206,38 @@ async function handleAnalyzeRequest(data, sendResponse) {
           }
         ]
       });
-    } else {
+    } else if (imageDataUrl) {
+      // Only image
+      messages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: userMessage
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: imageDataUrl
+            }
+          }
+        ]
+      });
+    } else if (textContent && textContent.trim().length > 0) {
+      // Only text
       messages.push({
         role: 'user',
         content: userMessage
       });
+    } else {
+      // Neither provided
+      const error = 'No content provided for analysis (neither text nor image)';
+      await chrome.storage.local.set({ 
+        analysisStatus: 'error',
+        analysisError: error
+      });
+      sendResponse({ error: error });
+      return;
     }
 
     // Make API request
