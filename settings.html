@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PropaScan Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>PropaScan Settings</h1>
+      <p class="subtitle">Choose your detection mode</p>
+    </header>
+
+    <!-- Mode Selection -->
+    <section class="modes-section">
+      <div class="mode-option" data-mode="sentinel">
+        <div class="mode-header">
+          <input type="radio" id="mode-sentinel" name="detection-mode" value="sentinel">
+          <label for="mode-sentinel" class="mode-label">
+            <span class="mode-name">Sentinel</span>
+            <span class="mode-badge">Always On</span>
+          </label>
+        </div>
+        <p class="mode-description">Always on and watching for propaganda. Continuously monitors pages you visit and alerts you to potential manipulation techniques in real-time.</p>
+      </div>
+
+      <div class="mode-option" data-mode="patrol">
+        <div class="mode-header">
+          <input type="radio" id="mode-patrol" name="detection-mode" value="patrol">
+          <label for="mode-patrol" class="mode-label">
+            <span class="mode-name">Patrol</span>
+            <span class="mode-badge">On Demand</span>
+          </label>
+        </div>
+        <p class="mode-description">Checking for propaganda on a page at your call. Manually trigger analysis when you want to scan the current page for propaganda techniques.</p>
+      </div>
+
+      <div class="mode-option" data-mode="targetscan">
+        <div class="mode-header">
+          <input type="radio" id="mode-targetscan" name="detection-mode" value="targetscan">
+          <label for="mode-targetscan" class="mode-label">
+            <span class="mode-name">TargetScan</span>
+            <span class="mode-badge">Selective</span>
+          </label>
+        </div>
+        <p class="mode-description">Waits for you to select potential propaganda before it checks. You choose specific content to analyze, giving you precise control over what gets scanned.</p>
+      </div>
+    </section>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button id="saveBtn" class="action-button save-btn">Save Settings</button>
+      <button id="backBtn" class="action-button back-btn">Back to Main</button>
+    </div>
+
+    <!-- Status Message -->
+    <div id="statusMessage" class="status-message hidden"></div>
+  </div>
+  <script src="settings.js"></script>
+</body>
+</html>
+

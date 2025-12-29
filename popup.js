@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingIndicator = document.getElementById('loadingIndicator');
   const errorMessage = document.getElementById('errorMessage');
   const selectAreaBtn = document.getElementById('selectAreaBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const modeName = document.getElementById('modeName');
 
   // Select area (screenshot) button handler
   selectAreaBtn.addEventListener('click', async () => {
@@ -37,6 +39,14 @@ document.addEventListener('DOMContentLoaded', () => {
     clearPreview();
     clearResults();
   });
+
+  // Settings button handler
+  settingsBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
+  });
+
+  // Load and display current mode
+  loadCurrentMode();
 
   // Handle select area action (for screenshot)
   async function handleSelectArea() {
@@ -329,6 +339,47 @@ document.addEventListener('DOMContentLoaded', () => {
     setLoading(false);
     clearSavedResults();
   }
+
+  // Load current detection mode from storage
+  async function loadCurrentMode() {
+    try {
+      const result = await chrome.storage.sync.get(['detectionMode']);
+      const mode = result.detectionMode || 'patrol'; // Default to patrol
+      
+      // Map mode values to display names
+      const modeNames = {
+        'sentinel': 'Sentinel',
+        'patrol': 'Patrol',
+        'targetscan': 'TargetScan'
+      };
+      
+      const displayName = modeNames[mode] || 'Patrol';
+      if (modeName) {
+        modeName.textContent = displayName;
+      }
+    } catch (error) {
+      console.error('Error loading mode:', error);
+      if (modeName) {
+        modeName.textContent = 'Patrol';
+      }
+    }
+  }
+
+  // Listen for storage changes to update mode display
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'sync' && changes.detectionMode) {
+      const newMode = changes.detectionMode.newValue || 'patrol';
+      const modeNames = {
+        'sentinel': 'Sentinel',
+        'patrol': 'Patrol',
+        'targetscan': 'TargetScan'
+      };
+      const displayName = modeNames[newMode] || 'Patrol';
+      if (modeName) {
+        modeName.textContent = displayName;
+      }
+    }
+  });
 
   // Load saved results when popup opens
   loadSavedResults();

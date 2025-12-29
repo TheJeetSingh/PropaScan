@@ -22,20 +22,68 @@ body {
   text-align: center;
   color: white;
   margin-bottom: 10px;
+  position: relative;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
 .header h1 {
-  margin: 0 0 8px 0;
+  margin: 0;
   font-size: 36px;
   font-weight: bold;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
+.settings-button {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.settings-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: rotate(90deg);
+}
+
+.settings-button:active {
+  transform: rotate(90deg) scale(0.95);
+}
+
 .subtitle {
-  margin: 0;
+  margin: 0 0 8px 0;
   font-size: 16px;
   opacity: 0.95;
   font-weight: 300;
+}
+
+.current-mode {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.8;
+  font-weight: 500;
+  color: rgba(102, 126, 234, 1);
+}
+
+.current-mode #modeName {
+  font-weight: 600;
+  text-transform: capitalize;
 }
 
 /* Section Headers */
