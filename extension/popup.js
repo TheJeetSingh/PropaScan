@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const pageUrl = document.getElementById('pageUrl');
   const showHighlightsBtn = document.getElementById('showHighlightsBtn');
   const instanceCount = document.getElementById('instanceCount');
+  const addToAutoScanBtn = document.getElementById('addToAutoScanBtn');
+  const autoScanStatus = document.getElementById('autoScanStatus');
 
   // Load current page info
   loadCurrentPageInfo();
@@ -742,21 +744,163 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Listen for storage changes to update mode display
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'sync' && changes.detectionMode) {
-      const newMode = changes.detectionMode.newValue || 'patrol';
-      const modeNames = {
-        'sentinel': 'Sentinel',
-        'patrol': 'Patrol',
-        'targetscan': 'TargetScan'
-      };
-      const displayName = modeNames[newMode] || 'Patrol';
-      if (modeName) {
-        modeName.textContent = displayName;
+  // Listen for storage changes to update mode display and auto-scan button
+  chrome.storage.onChanged.addListener(async (changes, areaName) => {
+    if (areaName === 'sync') {
+      if (changes.detectionMode) {
+        const newMode = changes.detectionMode.newValue || 'patrol';
+        const modeNames = {
+          'sentinel': 'Sentinel',
+          'patrol': 'Patrol',
+          'targetscan': 'TargetScan'
+        };
+        const displayName = modeNames[newMode] || 'Patrol';
+        if (modeName) {
+          modeName.textContent = displayName;
+        }
+        // Update auto-scan button when mode changes
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab) {
+          await updateAutoScanButton(tab);
+        }
+      }
+      // Update auto-scan button when list changes
+      if (changes.patrolAutoScanList) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab) {
+          await updateAutoScanButton(tab);
+        }
       }
     }
   });
+
+  // Get domain from URL
+  function getDomainFromUrl(url) {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname.replace('www.', '').toLowerCase();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Check if domain is in Patrol auto-scan list
+  async function isDomainInAutoScanList(domain) {
+    try {
+      const result = await chrome.storage.sync.get(['patrolAutoScanList']);
+      const autoScanList = result.patrolAutoScanList || [];
+      return autoScanList.includes(domain);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Add domain to Patrol auto-scan list
+  async function addDomainToAutoScanList(domain) {
+    try {
+      const result = await chrome.storage.sync.get(['patrolAutoScanList']);
+      const autoScanList = result.patrolAutoScanList || [];
+      
+      if (!autoScanList.includes(domain)) {
+        autoScanList.push(domain);
+        await chrome.storage.sync.set({ patrolAutoScanList: autoScanList });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Error adding domain to auto-scan list:', e);
+      return false;
+    }
+  }
+
+  // Remove domain from Patrol auto-scan list
+  async function removeDomainFromAutoScanList(domain) {
+    try {
+      const result = await chrome.storage.sync.get(['patrolAutoScanList']);
+      const autoScanList = result.patrolAutoScanList || [];
+      const filtered = autoScanList.filter(d => d !== domain);
+      await chrome.storage.sync.set({ patrolAutoScanList: filtered });
+      return true;
+    } catch (e) {
+      console.error('Error removing domain from auto-scan list:', e);
+      return false;
+    }
+  }
+
+  // Update auto-scan button state
+  async function updateAutoScanButton(tab) {
+    if (!addToAutoScanBtn || !tab || !tab.url) {
+      return;
+    }
+
+    // Check if in Patrol mode
+    const modeResult = await chrome.storage.sync.get(['detectionMode']);
+    if (modeResult.detectionMode !== 'patrol') {
+      addToAutoScanBtn.classList.add('hidden');
+      if (autoScanStatus) autoScanStatus.classList.add('hidden');
+      return;
+    }
+
+    const domain = getDomainFromUrl(tab.url);
+    if (!domain) {
+      addToAutoScanBtn.classList.add('hidden');
+      return;
+    }
+
+    const isInList = await isDomainInAutoScanList(domain);
+    
+    if (isInList) {
+      addToAutoScanBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 6L9 17l-5-5"/>
+        </svg>
+        Remove Auto-Scan
+      `;
+      addToAutoScanBtn.classList.remove('hidden');
+      addToAutoScanBtn.classList.add('remove-mode');
+      if (autoScanStatus) {
+        autoScanStatus.textContent = 'This site will be auto-scanned';
+        autoScanStatus.classList.remove('hidden');
+      }
+    } else {
+      addToAutoScanBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Auto-Scan This Site
+      `;
+      addToAutoScanBtn.classList.remove('hidden');
+      addToAutoScanBtn.classList.remove('remove-mode');
+      if (autoScanStatus) autoScanStatus.classList.add('hidden');
+    }
+  }
+
+  // Handle add/remove from auto-scan list
+  if (addToAutoScanBtn) {
+    addToAutoScanBtn.addEventListener('click', async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.url) return;
+
+      const domain = getDomainFromUrl(tab.url);
+      if (!domain) return;
+
+      const isInList = await isDomainInAutoScanList(domain);
+      
+      if (isInList) {
+        // Remove from list
+        const removed = await removeDomainFromAutoScanList(domain);
+        if (removed) {
+          await updateAutoScanButton(tab);
+        }
+      } else {
+        // Add to list
+        const added = await addDomainToAutoScanList(domain);
+        if (added) {
+          await updateAutoScanButton(tab);
+        }
+      }
+    });
+  }
 
   // Load current page info
   async function loadCurrentPageInfo() {
@@ -782,6 +926,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (scanPageBtn) {
           scanPageBtn.disabled = false;
         }
+
+        // Update auto-scan button state
+        await updateAutoScanButton(tab);
       } else {
         // Not a valid webpage
         if (pageInfoSection) {
@@ -789,6 +936,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (scanPageBtn) {
           scanPageBtn.disabled = true;
+        }
+        if (addToAutoScanBtn) {
+          addToAutoScanBtn.classList.add('hidden');
         }
       }
     } catch (error) {

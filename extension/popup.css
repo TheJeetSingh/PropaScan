@@ -249,6 +249,48 @@ body::after {
   margin: 0;
   font-size: 12px;
   color: var(--ink-light);
+}
+
+.quick-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  margin-top: 10px;
+  background: var(--paper-dark);
+  color: var(--ink-dark);
+  border: 2px solid var(--ink-dark);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 2px 2px 0 var(--ink-dark);
+  font-family: 'Playfair Display', serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.quick-action-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ink-dark);
+  background: var(--paper-light);
+}
+
+.quick-action-btn.remove-mode {
+  background: var(--accent-red);
+  color: var(--paper-light);
+}
+
+.quick-action-btn.remove-mode:hover {
+  background: #a03000;
+}
+
+.auto-scan-status {
+  margin: 6px 0 0 0;
+  font-size: 11px;
+  color: var(--ink-light);
+  font-style: italic;
+}
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -6,12 +6,18 @@
 // Then edit config.js and add your API key
 
 const CONFIG = {
-  // REQUIRED: Your Hack Club AI API Key
+  // OPTION 1: Use backend proxy (recommended - no API key needed)
+  // Set this to your deployed Vercel URL (e.g., 'https://propascan.vercel.app')
+  // Leave empty to use direct Hack Club AI API (requires API key below)
+  PROXY_URL: '',
+  
+  // OPTION 2: Direct Hack Club AI API (requires API key)
+  // REQUIRED if PROXY_URL is empty: Your Hack Club AI API Key
   // Get your API key from: https://hackclub.com/ai
   // IMPORTANT: Replace 'your_api_key_here' with your actual API key
   HACK_CLUB_AI_API_KEY: 'your_api_key_here',
   
-  // API Endpoint
+  // API Endpoint (only used if PROXY_URL is empty)
   // Hack Club AI uses OpenRouter-compatible API
   // Base URL from documentation: https://ai.hackclub.com/proxy/v1
   // Full endpoint: https://ai.hackclub.com/proxy/v1/chat/completions

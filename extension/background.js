@@ -1,6 +1,11 @@
 // Background service worker for PropaScan Extension
 // Handles API requests to avoid CORS issues
 
+// Debug flag - set to false to disable console logging
+const DEBUG = false;
+const log = (...args) => DEBUG && console.log('[PropaScan]', ...args);
+const logError = (...args) => console.error('[PropaScan]', ...args);
+
 // Get current date for system prompt
 function getCurrentDateString() {
   return new Date().toLocaleDateString('en-US', { 
@@ -451,6 +456,33 @@ function updateBadge(tabId, score, state = 'complete') {
   }
 }
 
+// Helper function to get API configuration (proxy or direct)
+function getAPIConfig(config) {
+  const proxyUrl = config?.PROXY_URL || '';
+  const useProxy = proxyUrl && proxyUrl.trim() !== '';
+  
+  if (useProxy) {
+    // Use proxy - no API key needed
+    const proxyEndpoint = proxyUrl.endsWith('/') 
+      ? `${proxyUrl}api/analyze` 
+      : `${proxyUrl}/api/analyze`;
+    return {
+      apiUrl: proxyEndpoint,
+      apiKey: null, // Not needed for proxy
+      requiresKey: false
+    };
+  } else {
+    // Use direct Hack Club AI API - requires API key
+    const apiUrl = config?.HACKCLUB_AI_API_URL || 'https://ai.hackclub.com/proxy/v1/chat/completions';
+    const apiKey = config?.HACK_CLUB_AI_API_KEY || '';
+    return {
+      apiUrl: apiUrl,
+      apiKey: apiKey,
+      requiresKey: true
+    };
+  }
+}
+
 // Perform Sentinel scan
 async function performSentinelScan(tabId, url) {
   try {
@@ -583,24 +615,33 @@ async function performSentinelScan(tabId, url) {
       });
     }
 
-    // Make API call
-    const apiUrl = config.HACKCLUB_AI_API_URL || 'https://ai.hackclub.com/proxy/v1/chat/completions';
-    const apiKey = config.HACK_CLUB_AI_API_KEY || '';
+    // Get API configuration (proxy or direct)
+    const apiConfig = getAPIConfig(config);
     const model = config.AI_MODEL || 'google/gemini-3-pro-preview';
     const temperature = config.TEMPERATURE || 0.7;
     const maxTokens = config.MAX_TOKENS || 16000;
     const topP = config.TOP_P || 1.0;
 
-    if (!apiKey || apiKey === 'your_api_key_here') {
-      throw new Error('API key not configured. Please set it in config.js and reload the extension.');
+    if (apiConfig.requiresKey && (!apiConfig.apiKey || apiConfig.apiKey === 'your_api_key_here')) {
+      throw new Error('API key not configured. Please set PROXY_URL in config.js or provide HACK_CLUB_AI_API_KEY.');
     }
 
-    const response = await fetch(apiUrl, {
+    // Check for offline status
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      throw new Error('No internet connection. Please check your network and try again.');
+    }
+
+    // Build headers
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (apiConfig.apiKey) {
+      headers['Authorization'] = `Bearer ${apiConfig.apiKey}`;
+    }
+
+    const response = await fetch(apiConfig.apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: headers,
       body: JSON.stringify({
         model: model,
         messages: messages,
@@ -612,7 +653,16 @@ async function performSentinelScan(tabId, url) {
     });
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      // Handle rate limiting and other errors
+      if (response.status === 429) {
+        throw new Error('API rate limit exceeded. Please wait a moment and try again.');
+      } else if (response.status >= 500) {
+        throw new Error('API server error. Please try again later.');
+      } else if (response.status === 401 || response.status === 403) {
+        throw new Error('API authentication failed. Please check your API key in settings.');
+      } else {
+        throw new Error(`API error: ${response.status}`);
+      }
     }
 
     const responseData = await response.json();
@@ -672,7 +722,168 @@ async function performSentinelScan(tabId, url) {
 // Track scans in progress to prevent duplicates
 const scansInProgress = new Map(); // URL -> timeout ID
 
-// Handle navigation updates (Sentinel Mode)
+// Handle Sentinel mode navigation
+async function handleSentinelNavigation(tabId, tab) {
+  const url = normalizeUrl(tab.url);
+  const domain = getDomain(url);
+  log('[Sentinel] Domain:', domain);
+
+  // Check if scan already in progress for this URL
+  if (scansInProgress.has(url)) {
+    log('[Sentinel] Scan already in progress for this URL, skipping');
+    return;
+  }
+
+  // Check whitelist
+  const whitelisted = await isDomainWhitelisted(domain);
+  if (whitelisted) {
+    log('[Sentinel] Domain is whitelisted, skipping:', domain);
+    updateBadge(tabId, 0, 'clear');
+    return;
+  }
+
+  // Check if analyzed recently (within 1 hour)
+  const recentCheck = await wasAnalyzedRecently(url);
+  if (recentCheck.analyzed) {
+    log('[Sentinel] URL analyzed recently, using history result');
+    updateBadge(tabId, recentCheck.entry.score, 'complete');
+    
+    // Auto-show highlights if instances exist
+    const analysisResult = recentCheck.entry.result || recentCheck.entry.analysisResult;
+    if (analysisResult && analysisResult.instances && analysisResult.instances.length > 0) {
+      log('[Sentinel] Auto-showing highlights for', analysisResult.instances.length, 'instances from history');
+      setTimeout(() => autoShowHighlights(tabId, analysisResult.instances), 2000);
+    }
+    return;
+  }
+
+  // Wait for delay before scanning
+  const delayResult = await chrome.storage.sync.get(['sentinelDelay']);
+  const delay = delayResult.sentinelDelay || 3;
+  log('[Sentinel] Will scan in', delay, 'seconds');
+  
+  // Mark scan as in progress
+  const timeoutId = setTimeout(async () => {
+    try {
+      const currentTab = await chrome.tabs.get(tabId);
+      const currentUrl = normalizeUrl(currentTab.url);
+      if (currentUrl !== url) {
+        log('[Sentinel] URL changed, cancelling scan');
+        scansInProgress.delete(url);
+        return;
+      }
+
+      const modeCheck = await chrome.storage.sync.get(['detectionMode']);
+      if (modeCheck.detectionMode !== 'sentinel') {
+        log('[Sentinel] Mode changed, cancelling scan');
+        scansInProgress.delete(url);
+        return;
+      }
+
+      log('[Sentinel] Starting scan after delay');
+      const result = await performSentinelScan(tabId, currentTab.url);
+      
+      if (result && result.instances && result.instances.length > 0) {
+        setTimeout(() => autoShowHighlights(tabId, result.instances), 1000);
+      }
+      
+      scansInProgress.delete(url);
+    } catch (e) {
+      log('[Sentinel] Tab no longer available:', e.message);
+      scansInProgress.delete(url);
+    }
+  }, delay * 1000);
+  
+  scansInProgress.set(url, timeoutId);
+}
+
+// Check if domain is in Patrol auto-scan list
+async function isDomainInPatrolAutoScanList(domain) {
+  try {
+    const result = await chrome.storage.sync.get(['patrolAutoScanList']);
+    const autoScanList = result.patrolAutoScanList || [];
+    const normalizedDomain = domain.toLowerCase().replace('www.', '');
+    return autoScanList.includes(normalizedDomain);
+  } catch (e) {
+    logError('[Patrol] Error checking auto-scan list:', e);
+    return false;
+  }
+}
+
+// Handle Patrol mode navigation
+async function handlePatrolNavigation(tabId, tab) {
+  const url = normalizeUrl(tab.url);
+  const domain = getDomain(url);
+  log('[Patrol] Domain:', domain);
+
+  // Check if scan already in progress for this URL
+  if (scansInProgress.has(url)) {
+    log('[Patrol] Scan already in progress for this URL, skipping');
+    return;
+  }
+
+  // Check if domain is in auto-scan list
+  const inAutoScanList = await isDomainInPatrolAutoScanList(domain);
+  if (!inAutoScanList) {
+    log('[Patrol] Domain not in auto-scan list, skipping:', domain);
+    return;
+  }
+
+  // Check if analyzed recently (within 1 hour)
+  const recentCheck = await wasAnalyzedRecently(url);
+  if (recentCheck.analyzed) {
+    log('[Patrol] URL analyzed recently, using history result');
+    
+    // Auto-show highlights if instances exist
+    const analysisResult = recentCheck.entry.result || recentCheck.entry.analysisResult;
+    if (analysisResult && analysisResult.instances && analysisResult.instances.length > 0) {
+      log('[Patrol] Auto-showing highlights for', analysisResult.instances.length, 'instances from history');
+      setTimeout(() => autoShowHighlights(tabId, analysisResult.instances), 2000);
+    }
+    return;
+  }
+
+  // Wait for delay before scanning
+  const delayResult = await chrome.storage.sync.get(['patrolDelay']);
+  const delay = delayResult.patrolDelay || 3;
+  log('[Patrol] Will scan in', delay, 'seconds');
+  
+  // Mark scan as in progress
+  const timeoutId = setTimeout(async () => {
+    try {
+      const currentTab = await chrome.tabs.get(tabId);
+      const currentUrl = normalizeUrl(currentTab.url);
+      if (currentUrl !== url) {
+        log('[Patrol] URL changed, cancelling scan');
+        scansInProgress.delete(url);
+        return;
+      }
+
+      const modeCheck = await chrome.storage.sync.get(['detectionMode']);
+      if (modeCheck.detectionMode !== 'patrol') {
+        log('[Patrol] Mode changed, cancelling scan');
+        scansInProgress.delete(url);
+        return;
+      }
+
+      log('[Patrol] Starting auto-scan after delay');
+      const result = await performPatrolScan(tabId, currentTab.url);
+      
+      if (result && result.instances && result.instances.length > 0) {
+        setTimeout(() => autoShowHighlights(tabId, result.instances), 1000);
+      }
+      
+      scansInProgress.delete(url);
+    } catch (e) {
+      log('[Patrol] Tab no longer available:', e.message);
+      scansInProgress.delete(url);
+    }
+  }, delay * 1000);
+  
+  scansInProgress.set(url, timeoutId);
+}
+
+// Handle navigation updates (Sentinel and Patrol Mode)
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Only process when page is fully loaded
   if (changeInfo.status !== 'complete') {
@@ -684,105 +895,29 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     return;
   }
 
-  // Check if Sentinel mode is enabled
+  // Check current mode
   try {
     const result = await chrome.storage.sync.get(['detectionMode']);
-    console.log('[Sentinel] Navigation detected, mode:', result.detectionMode, 'URL:', tab.url);
+    const mode = result.detectionMode;
+    log('[Navigation] Mode:', mode, 'URL:', tab.url);
     
-    if (result.detectionMode !== 'sentinel') {
-      console.log('[Sentinel] Not in Sentinel mode, skipping');
+    // Handle Sentinel mode
+    if (mode === 'sentinel') {
+      await handleSentinelNavigation(tabId, tab);
       return;
     }
-
-    const url = normalizeUrl(tab.url);
-    const domain = getDomain(url);
-    console.log('[Sentinel] Domain:', domain);
-
-    // Check if scan already in progress for this URL
-    if (scansInProgress.has(url)) {
-      console.log('[Sentinel] Scan already in progress for this URL, skipping');
-      return;
-    }
-
-    // Check whitelist
-    const whitelisted = await isDomainWhitelisted(domain);
-    if (whitelisted) {
-      console.log('[Sentinel] Domain is whitelisted, skipping:', domain);
-      updateBadge(tabId, 0, 'clear');
-      return;
-    }
-
-    // Check if analyzed recently (within 1 hour)
-    const recentCheck = await wasAnalyzedRecently(url);
-    if (recentCheck.analyzed) {
-      console.log('[Sentinel] URL analyzed recently, using history result');
-      updateBadge(tabId, recentCheck.entry.score, 'complete');
-      
-      // Auto-show highlights if instances exist
-      // Note: history entry stores result as 'result', not 'analysisResult'
-      const analysisResult = recentCheck.entry.result || recentCheck.entry.analysisResult;
-      console.log('[Sentinel] Checking for instances in history result:', {
-        hasResult: !!analysisResult,
-        hasInstances: !!(analysisResult && analysisResult.instances),
-        instanceCount: analysisResult && analysisResult.instances ? analysisResult.instances.length : 0
-      });
-      
-      if (analysisResult && analysisResult.instances && analysisResult.instances.length > 0) {
-        console.log('[Sentinel] Auto-showing highlights for', analysisResult.instances.length, 'instances from history');
-        setTimeout(() => autoShowHighlights(tabId, analysisResult.instances), 2000);
-      } else {
-        console.log('[Sentinel] No instances found in history result, skipping auto-highlight');
-      }
-      return;
-    }
-
-    // Wait for delay before scanning
-    const delayResult = await chrome.storage.sync.get(['sentinelDelay']);
-    const delay = delayResult.sentinelDelay || 3;
-    console.log('[Sentinel] Will scan in', delay, 'seconds');
     
-    // Mark scan as in progress
-    const timeoutId = setTimeout(async () => {
-      // Check if tab still exists and URL hasn't changed
-      try {
-        const currentTab = await chrome.tabs.get(tabId);
-        const currentUrl = normalizeUrl(currentTab.url);
-        if (currentUrl !== url) {
-          console.log('[Sentinel] URL changed, cancelling scan');
-          scansInProgress.delete(url);
-          return;
-        }
-
-        // Check if still in Sentinel mode
-        const modeCheck = await chrome.storage.sync.get(['detectionMode']);
-        if (modeCheck.detectionMode !== 'sentinel') {
-          console.log('[Sentinel] Mode changed, cancelling scan');
-          scansInProgress.delete(url);
-          return;
-        }
-
-        console.log('[Sentinel] Starting scan after delay');
-        // Perform scan
-        const result = await performSentinelScan(tabId, currentTab.url);
-        
-        // Auto-show highlights if instances found
-        if (result && result.instances && result.instances.length > 0) {
-          setTimeout(() => autoShowHighlights(tabId, result.instances), 1000);
-        }
-        
-        // Remove from in-progress map
-        scansInProgress.delete(url);
-      } catch (e) {
-        // Tab might have been closed
-        console.log('[Sentinel] Tab no longer available:', e.message);
-        scansInProgress.delete(url);
-      }
-    }, delay * 1000);
+    // Handle Patrol mode with auto-scan
+    if (mode === 'patrol') {
+      await handlePatrolNavigation(tabId, tab);
+      return;
+    }
     
-    scansInProgress.set(url, timeoutId);
+    // Other modes don't auto-scan
+    return;
 
   } catch (error) {
-    console.error('[Sentinel] Error in navigation listener:', error);
+    logError('[Navigation] Error in navigation listener:', error);
   }
 });
 
@@ -1018,16 +1153,15 @@ async function performPatrolScan(tabId, url) {
       });
     }
 
-    // Make API call
-    const apiUrl = config.HACKCLUB_AI_API_URL || 'https://ai.hackclub.com/proxy/v1/chat/completions';
-    const apiKey = config.HACK_CLUB_AI_API_KEY || '';
+    // Get API configuration (proxy or direct)
+    const apiConfig = getAPIConfig(config);
     const model = config.AI_MODEL || 'google/gemini-3-pro-preview';
     const temperature = config.TEMPERATURE || 0.7;
     const maxTokens = config.MAX_TOKENS || 16000;
     const topP = config.TOP_P || 1.0;
 
-    if (!apiKey || apiKey === 'your_api_key_here') {
-      const error = 'API key not configured. Please set it in settings.';
+    if (apiConfig.requiresKey && (!apiConfig.apiKey || apiConfig.apiKey === 'your_api_key_here')) {
+      const error = 'API key not configured. Please set PROXY_URL in config.js or provide HACK_CLUB_AI_API_KEY.';
       await chrome.storage.local.set({
         [`analysisStatus_${tabId}`]: 'error',
         [`analysisError_${tabId}`]: error
@@ -1035,14 +1169,29 @@ async function performPatrolScan(tabId, url) {
       throw new Error(error);
     }
 
-    console.log('[Patrol] Sending to AI for analysis...');
+    // Check for offline status
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const error = 'No internet connection. Please check your network and try again.';
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
+      });
+      throw new Error(error);
+    }
 
-    const response = await fetch(apiUrl, {
+    log('[Patrol] Sending to AI for analysis...');
+
+    // Build headers
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (apiConfig.apiKey) {
+      headers['Authorization'] = `Bearer ${apiConfig.apiKey}`;
+    }
+
+    const response = await fetch(apiConfig.apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: headers,
       body: JSON.stringify({
         model: model,
         messages: messages,
@@ -1054,8 +1203,27 @@ async function performPatrolScan(tabId, url) {
     });
 
     if (!response.ok) {
-      const errorData = await response.text();
-      const error = `API error: ${response.status} - ${errorData}`;
+      let error = `API request failed`;
+      
+      // Handle rate limiting specifically
+      if (response.status === 429) {
+        error = 'API rate limit exceeded. Please wait a moment and try again.';
+      } else if (response.status >= 500) {
+        error = 'API server error. Please try again later.';
+      } else if (response.status === 401 || response.status === 403) {
+        error = 'API authentication failed. Please check your API key in settings.';
+      } else {
+        // Sanitize error message
+        try {
+          const errorData = await response.text();
+          const errorSummary = errorData.length > 200 ? errorData.substring(0, 200) + '...' : errorData;
+          const sanitized = errorSummary.replace(/api[_-]?key/gi, '[REDACTED]').replace(/bearer\s+\w+/gi, '[REDACTED]');
+          error = `API request failed (${response.status}): ${sanitized}`;
+        } catch (e) {
+          error = `API request failed (${response.status})`;
+        }
+      }
+      
       await chrome.storage.local.set({
         [`analysisStatus_${tabId}`]: 'error',
         [`analysisError_${tabId}`]: error
@@ -1163,6 +1331,18 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     console.log(`[Cleanup] Removed storage for closed tab ${tabId}`);
   } catch (e) {
     console.error('[Cleanup] Error cleaning up tab storage:', e);
+  }
+});
+
+// Handle keyboard shortcut commands
+chrome.commands.onCommand.addListener((command) => {
+  if (command === 'scan-page') {
+    // Get the active tab and trigger a Patrol scan
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0] && tabs[0].url && (tabs[0].url.startsWith('http://') || tabs[0].url.startsWith('https://'))) {
+        performPatrolScan(tabs[0].id, tabs[0].url);
+      }
+    });
   }
 });
 
@@ -1289,21 +1469,30 @@ async function handleAnalyzeRequest(data, sendResponse, tabId) {
       [`scanMetadata_${tabId}`]: data.metadata || null // Save metadata with tab ID
     });
 
-    // Load config from storage or use provided config
-    // Hack Club AI uses: https://ai.hackclub.com/proxy/v1/chat/completions
-    const apiUrl = config?.HACKCLUB_AI_API_URL || 'https://ai.hackclub.com/proxy/v1/chat/completions';
-    const apiKey = config?.HACK_CLUB_AI_API_KEY || '';
+    // Get API configuration (proxy or direct)
+    const apiConfig = getAPIConfig(config);
     const model = config?.AI_MODEL || 'google/gemini-3-pro-preview';
     const temperature = config?.TEMPERATURE || 0.7;
     const maxTokens = config?.MAX_TOKENS || 16000; // Increased default for comprehensive analysis
     const topP = config?.TOP_P || 1.0;
 
     console.log('Background: Received analyze request');
-    console.log('Background: API URL:', apiUrl);
-    console.log('Background: API Key present:', !!apiKey && apiKey !== 'your_api_key_here');
+    console.log('Background: API URL:', apiConfig.apiUrl);
+    console.log('Background: Using proxy:', !apiConfig.requiresKey);
 
-    if (!apiKey || apiKey === 'your_api_key_here') {
-      const error = 'API key not configured';
+    if (apiConfig.requiresKey && (!apiConfig.apiKey || apiConfig.apiKey === 'your_api_key_here')) {
+      const error = 'API key not configured. Please set PROXY_URL in config.js or provide HACK_CLUB_AI_API_KEY.';
+      await chrome.storage.local.set({
+        [`analysisStatus_${tabId}`]: 'error',
+        [`analysisError_${tabId}`]: error
+      });
+      sendResponse({ error: error });
+      return;
+    }
+
+    // Check for offline status
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const error = 'No internet connection. Please check your network and try again.';
       await chrome.storage.local.set({
         [`analysisStatus_${tabId}`]: 'error',
         [`analysisError_${tabId}`]: error
@@ -1346,11 +1535,11 @@ async function handleAnalyzeRequest(data, sendResponse, tabId) {
       console.warn('[Background] No image provided');
     }
 
-    // Prepare messages
+    // Prepare messages (system prompt is always generated in background.js to avoid duplication)
     const messages = [
       {
         role: 'system',
-        content: data.systemPrompt || getSystemPrompt()
+        content: getSystemPrompt()
       }
     ];
 
@@ -1406,7 +1595,7 @@ async function handleAnalyzeRequest(data, sendResponse, tabId) {
     }
 
     // Make API request
-    console.log('Background: Making fetch request to:', apiUrl);
+    console.log('Background: Making fetch request to:', apiConfig.apiUrl);
     
     const requestBody = {
       model: model,
@@ -1417,21 +1606,47 @@ async function handleAnalyzeRequest(data, sendResponse, tabId) {
       top_p: topP
     };
     
-    const response = await fetch(apiUrl, {
+    // Build headers
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (apiConfig.apiKey) {
+      headers['Authorization'] = `Bearer ${apiConfig.apiKey}`;
+    }
+    
+    const response = await fetch(apiConfig.apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: headers,
       body: JSON.stringify(requestBody)
     });
 
     console.log('Background: Response status:', response.status, response.statusText);
 
     if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Background: API error response:', errorData);
-      const errorMsg = `API request failed: ${response.status} ${response.statusText} - ${errorData}`;
+      let errorMsg = `API request failed`;
+      
+      // Handle rate limiting specifically
+      if (response.status === 429) {
+        errorMsg = 'API rate limit exceeded. Please wait a moment and try again.';
+      } else if (response.status >= 500) {
+        errorMsg = 'API server error. Please try again later.';
+      } else if (response.status === 401 || response.status === 403) {
+        errorMsg = 'API authentication failed. Please check your API key in settings.';
+      } else {
+        // Sanitize error message - don't expose full API response details
+        try {
+          const errorData = await response.text();
+          // Only include safe error info (status code is already known)
+          const errorSummary = errorData.length > 200 ? errorData.substring(0, 200) + '...' : errorData;
+          // Remove potential sensitive info
+          const sanitized = errorSummary.replace(/api[_-]?key/gi, '[REDACTED]').replace(/bearer\s+\w+/gi, '[REDACTED]');
+          errorMsg = `API request failed (${response.status}): ${sanitized}`;
+        } catch (e) {
+          errorMsg = `API request failed (${response.status})`;
+        }
+      }
+      
+      logError('API error response:', response.status);
       await chrome.storage.local.set({
         [`analysisStatus_${tabId}`]: 'error',
         [`analysisError_${tabId}`]: errorMsg

@@ -55,6 +55,17 @@ function updateModeSelection(selectedMode) {
       sentinelConfig.classList.add('hidden');
     }
   }
+
+  // Show/hide Patrol config panel
+  const patrolConfig = document.getElementById('patrolConfig');
+  if (patrolConfig) {
+    if (selectedMode === 'patrol') {
+      patrolConfig.classList.remove('hidden');
+      loadPatrolConfig();
+    } else {
+      patrolConfig.classList.add('hidden');
+    }
+  }
 }
 
 // Load Sentinel configuration
@@ -78,6 +89,23 @@ async function loadSentinelConfig() {
     await loadWhitelist();
   } catch (error) {
     console.error('Error loading Sentinel config:', error);
+  }
+}
+
+// Load Patrol configuration
+async function loadPatrolConfig() {
+  try {
+    // Load delay
+    const delayResult = await chrome.storage.sync.get(['patrolDelay']);
+    const delayInput = document.getElementById('patrolDelay');
+    if (delayInput) {
+      delayInput.value = delayResult.patrolDelay || 3;
+    }
+
+    // Load auto-scan domains list
+    await loadPatrolAutoScanList();
+  } catch (error) {
+    console.error('Error loading Patrol config:', error);
   }
 }
 
@@ -192,6 +220,78 @@ async function addToWhitelist(domain) {
   }
 }
 
+// Load Patrol auto-scan list
+async function loadPatrolAutoScanList() {
+  try {
+    const result = await chrome.storage.sync.get(['patrolAutoScanList']);
+    const autoScanList = result.patrolAutoScanList || [];
+    const itemsContainer = document.getElementById('patrolAutoScanItems');
+    
+    if (itemsContainer) {
+      itemsContainer.innerHTML = '';
+      autoScanList.forEach(domain => {
+        const item = document.createElement('div');
+        item.className = 'whitelist-item';
+        item.innerHTML = `
+          <span>${domain}</span>
+          <button class="remove-whitelist-btn" data-domain="${domain}" data-type="patrol">×</button>
+        `;
+        itemsContainer.appendChild(item);
+      });
+
+      // Add remove handlers
+      document.querySelectorAll('.remove-whitelist-btn[data-type="patrol"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const domain = e.target.dataset.domain;
+          await removeFromPatrolAutoScanList(domain);
+        });
+      });
+    }
+  } catch (error) {
+    console.error('Error loading Patrol auto-scan list:', error);
+  }
+}
+
+// Remove from Patrol auto-scan list
+async function removeFromPatrolAutoScanList(domain) {
+  try {
+    const result = await chrome.storage.sync.get(['patrolAutoScanList']);
+    const autoScanList = result.patrolAutoScanList || [];
+    const filtered = autoScanList.filter(d => d !== domain);
+    await chrome.storage.sync.set({ patrolAutoScanList: filtered });
+    await loadPatrolAutoScanList();
+  } catch (error) {
+    console.error('Error removing from Patrol auto-scan list:', error);
+  }
+}
+
+// Add to Patrol auto-scan list
+async function addToPatrolAutoScanList(domain) {
+  if (!domain || domain.trim() === '') {
+    return;
+  }
+
+  const cleanDomain = domain.trim().toLowerCase().replace('www.', '');
+  
+  try {
+    const result = await chrome.storage.sync.get(['patrolAutoScanList']);
+    const autoScanList = result.patrolAutoScanList || [];
+    
+    if (!autoScanList.includes(cleanDomain)) {
+      autoScanList.push(cleanDomain);
+      await chrome.storage.sync.set({ patrolAutoScanList: autoScanList });
+      await loadPatrolAutoScanList();
+      
+      const input = document.getElementById('patrolAutoScanInput');
+      if (input) {
+        input.value = '';
+      }
+    }
+  } catch (error) {
+    console.error('Error adding to Patrol auto-scan list:', error);
+  }
+}
+
 // Save mode to storage
 async function saveMode() {
   const selectedRadio = document.querySelector('input[name="detection-mode"]:checked');
@@ -219,6 +319,16 @@ async function saveMode() {
       if (cacheInput) {
         const cacheDuration = parseInt(cacheInput.value) || 24;
         await chrome.storage.sync.set({ sentinelCacheDuration: cacheDuration });
+      }
+    }
+
+    // Save Patrol config if Patrol mode is selected
+    if (selectedMode === 'patrol') {
+      const delayInput = document.getElementById('patrolDelay');
+      
+      if (delayInput) {
+        const delay = parseInt(delayInput.value) || 3;
+        await chrome.storage.sync.set({ patrolDelay: delay });
       }
     }
     
@@ -337,6 +447,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearCacheBtn = document.getElementById('clearCacheBtn');
   if (clearCacheBtn) {
     clearCacheBtn.addEventListener('click', clearCache);
+  }
+
+  // Patrol config handlers
+  const addPatrolAutoScanBtn = document.getElementById('addPatrolAutoScanBtn');
+  const patrolAutoScanInput = document.getElementById('patrolAutoScanInput');
+  if (addPatrolAutoScanBtn && patrolAutoScanInput) {
+    addPatrolAutoScanBtn.addEventListener('click', () => {
+      addToPatrolAutoScanList(patrolAutoScanInput.value);
+    });
+    patrolAutoScanInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        addToPatrolAutoScanList(patrolAutoScanInput.value);
+      }
+    });
   }
 
   // Rate limits removed - history-based checking is now used

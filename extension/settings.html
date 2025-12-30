@@ -87,6 +87,35 @@
       </div>
     </section>
 
+    <!-- Patrol Mode Configuration (shown when Patrol mode is selected) -->
+    <section id="patrolConfig" class="patrol-config hidden">
+      <h2>Patrol Mode Configuration</h2>
+      
+      <div class="config-item">
+        <label for="patrolDelay">Auto-Scan Delay (seconds)</label>
+        <input type="number" id="patrolDelay" min="1" max="10" value="3">
+        <p class="config-hint">Wait time after page loads before auto-scanning</p>
+      </div>
+
+      <div class="config-item">
+        <label>Auto-Scan Domains</label>
+        <div class="whitelist-container">
+          <div id="patrolAutoScanItems" class="whitelist-items"></div>
+          <div class="whitelist-input">
+            <input type="text" id="patrolAutoScanInput" placeholder="Enter domain (e.g., cnn.com)">
+            <button id="addPatrolAutoScanBtn" class="add-btn">Add</button>
+          </div>
+        </div>
+        <p class="config-hint">Domains that will be auto-scanned when in Patrol mode</p>
+      </div>
+    </section>
+
+    <!-- API Key Security Warning -->
+    <section class="security-warning">
+      <h3>🔒 Security Notice</h3>
+      <p>Your API key is stored in Chrome's sync storage, which syncs across all devices where you're logged into Chrome. If you're using a shared computer, consider using a separate Chrome profile or be aware that your API key will be accessible on that device.</p>
+    </section>
+
     <!-- Actions -->
     <div class="actions">
       <button id="saveBtn" class="action-button save-btn">Save Settings</button>

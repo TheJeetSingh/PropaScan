@@ -1,98 +1,47 @@
-# PropaScan - Propaganda Detection Chrome Extension
+# PropaScan
 
-A Chrome Extention that utilizes Gemini 3.0 Pro to detect propaganda in images and text.
+AI-powered propaganda and manipulation detection Chrome Extension with marketing website and backend proxy.
 
-## Installation For Developers
+## Project Structure
 
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable "Developer mode" (toggle in the top right)
-3. Click "Load unpacked"
-4. Select this folder
-5. The extension icon should appear in your Chrome toolbar
+```
+PropaScan/
+├── extension/          # Chrome Extension files (for Chrome Web Store)
+│   ├── manifest.json
+│   ├── popup.*
+│   ├── background.js
+│   ├── content.js
+│   └── ... (all extension files
+│
+└── website-next/       # Next.js website + backend API proxy
+    ├── app/
+    │   └── api/
+    │       └── analyze/  # Backend proxy endpoint
+    ├── components/
+    └── package.json
+```
 
-## Installation For Regular Users
+## Quick Start
 
-1. Coming soon to the Chrome Web Store!
+### For Extension Development
 
-## Configuration
+1. Navigate to `extension/` folder
+2. See `extension/README.md` for setup instructions
+3. Load unpacked extension from `extension/` folder in Chrome
 
-**IMPORTANT: You must configure your API key before using the extension.**
+### For Website/Backend Deployment
 
-1. Copy the example configuration file:
-   ```bash
-   cp config.example.js config.js
-   ```
-   On Windows (PowerShell):
-   ```powershell
-   Copy-Item config.example.js config.js
-   ```
+1. Navigate to `website-next/` folder
+2. See `website-next/README.md` for deployment instructions
+3. Deploy to Vercel with environment variables set
 
-2. Get your Hack Club AI API key from: https://hackclub.com/ai You will need to sign up to Hack Club Slack + be a teenager. 
+## Chrome Web Store Submission
 
-Coming Soon: I will add a AIStudio rewrite so you can use a normal AIStudio key.
+Zip the `extension/` folder contents (not the folder itself) and submit to Chrome Web Store.
 
-3. Open `config.js` and replace `your_api_key_here` with your actual API key:
-   ```javascript
-   HACK_CLUB_AI_API_KEY: 'your_actual_api_key_here',
-   ```
+## Deployment
 
-**Security Note:** The `config.js` file is gitignored to protect your API key. Never commit `config.js` to version control.
+- **Extension**: Zip `extension/` folder contents → Chrome Web Store
+- **Website**: Deploy `website-next/` folder → Vercel
 
-### Configuration Options
-
-You can customize these settings in `config.js` (after copying from `config.example.js`):
-- `HACK_CLUB_AI_API_KEY` - Your Hack Club AI API key (required)
-- `HACKCLUB_AI_API_URL` - API endpoint URL
-- `AI_MODEL` - Model to use (default: `google/gemini-3-pro-preview`)
-- `TEMPERATURE` - Response randomness (0.0-2.0, default: 0.7)
-- `MAX_TOKENS` - Maximum response tokens (default: 4000)
-- `TOP_P` - Nucleus sampling (0.0-1.0, default: 1.0)
-- `REQUEST_TIMEOUT` - Request timeout in milliseconds (default: 60000)
-
-## Usage
-
-1. Click the extension icon in your toolbar
-2. Upload an image and/or enter text to analyze
-3. Click "Analyze" to scan for propaganda techniques
-4. Review the detailed analysis results
-
-## Files
-
-- `manifest.json` - Extension configuration (Manifest V3)
-- `popup.html` - The popup UI
-- `popup.css` - Styling for the popup
-- `popup.js` - Main extension logic
-- `api.js` - Hack Club AI API integration
-- `background.js` - Background service worker for API requests
-- `config.example.js` - Example configuration file (copy to `config.js` and add your API key)
-- `config.js` - Your local configuration file (gitignored, copy from `config.example.js`)
-
-## Adding Icons
-
-To complete the setup, add icon files to the `icons/` folder:
-- `icon16.png` (16x16 pixels)
-- `icon48.png` (48x48 pixels)
-- `icon128.png` (128x128 pixels)
-
-You can use any image editor to create these, or use placeholder images for testing.
-
-## Website
-
-A marketing website for PropaScan is available in the `website-next/` directory. Built with **Next.js 14**, the website features the same vintage newspaper aesthetic as the extension and provides:
-
-- Detailed explanation of features and functionality
-- Installation instructions
-- Propaganda tier system overview
-- List of detected techniques
-- Open source and privacy information
-- Smooth animations with Framer Motion
-- Fully responsive design
-
-To run the website locally:
-1. Navigate to the `website-next/` directory
-2. Run `npm install` to install dependencies
-3. Run `npm run dev` to start the development server
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-See [website-next/README.md](website-next/README.md) for more details about the website.
-
+See individual README files in each folder for detailed instructions.

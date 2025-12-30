@@ -18,8 +18,9 @@ node_modules/
 # Environment variables
 .env
 
-# Configuration file with secrets
+# Configuration files with secrets
 config.js
+extension/config.js
 
 # Claude directory
 .claude/
