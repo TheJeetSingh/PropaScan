@@ -76,3 +76,19 @@ To complete the setup, add icon files to the `icons/` folder:
 
 You can use any image editor to create these, or use placeholder images for testing.
 
+## Website
+
+A marketing website for PropaScan is available in the `website/` directory. The website features the same vintage newspaper aesthetic as the extension and provides:
+
+- Detailed explanation of features and functionality
+- Installation instructions
+- Propaganda tier system overview
+- List of detected techniques
+- Open source and privacy information
+
+To view the website locally:
+1. Navigate to the `website/` directory
+2. Open `index.html` in your web browser
+
+See [website/README.md](website/README.md) for more details about the website.
+

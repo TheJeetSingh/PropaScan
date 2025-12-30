@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PropaScan - Expose Propaganda & Manipulation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Newspaper fold effect -->
+  <div class="page-fold"></div>
+
+  <div class="newspaper">
+    <!-- Masthead -->
+    <header class="masthead">
+      <div class="masthead-ornament">⚘ ⚘ ⚘</div>
+      <div class="edition-info">
+        <span class="edition-label">Chrome Extension</span>
+        <span class="separator">●</span>
+        <span class="edition-label">Free & Open Source</span>
+      </div>
+      <h1 class="newspaper-title">PropaScan</h1>
+      <div class="tagline">The Truth Detector for the Modern Web</div>
+      <div class="masthead-line"></div>
+      <div class="publish-info">
+        <span>Exposing Manipulation Since 2024</span>
+        <span class="separator">●</span>
+        <span id="currentDate"></span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="content">
+      <!-- Hero Banner -->
+      <article class="hero-banner">
+        <div class="banner-kicker">BREAKING INVESTIGATION</div>
+        <h2 class="banner-headline">Propaganda Lurks in Every Corner of the Internet</h2>
+        <div class="banner-deck">New browser extension arms readers with instant analysis tools to detect bias, manipulation, and disinformation before it spreads</div>
+      </article>
+
+      <!-- Two-column layout -->
+      <div class="columns">
+        <!-- Left column -->
+        <div class="column column-main">
+          <!-- Lead story -->
+          <article class="story lead-story">
+            <h3 class="story-headline">What Is PropaScan?</h3>
+            <div class="story-byline">By The PropaScan Team</div>
+
+            <p class="story-text">
+              In an era where misinformation spreads faster than truth, PropaScan serves as your personal watchdog against manipulation. This powerful Chrome extension analyzes web pages in real-time, detecting propaganda techniques, emotional manipulation, and cognitive biases hidden in plain sight.
+            </p>
+
+            <div class="pull-quote">
+              <div class="quote-mark">"</div>
+              <div class="quote-text">Not all manipulation is obvious. PropaScan reveals what they don't want you to see.</div>
+              <div class="quote-mark flip">"</div>
+            </div>
+
+            <p class="story-text">
+              Using advanced AI analysis, PropaScan examines text and images across any webpage, identifying subtle tactics used to sway opinion, trigger emotions, and bypass critical thinking. Each scan produces a detailed report with severity ratings, technique breakdowns, and neutral rewrites of biased content.
+            </p>
+
+            <h4 class="subheading">How It Works</h4>
+            <p class="story-text">
+              PropaScan operates in two powerful modes: <strong>Patrol Mode</strong> for instant page-wide scans, and <strong>Capture Mode</strong> for analyzing specific text or screenshot selections. Results are categorized across five propaganda tiers—from neutral reporting (Tier 1) to outright disinformation (Tier 5).
+            </p>
+
+            <div class="info-box">
+              <div class="info-box-header">THE FIVE TIERS OF PROPAGANDA</div>
+              <ul class="tier-list">
+                <li><span class="tier-marker tier-1">Tier 1</span> Neutral & Factual</li>
+                <li><span class="tier-marker tier-2">Tier 2</span> Mild Bias Present</li>
+                <li><span class="tier-marker tier-3">Tier 3</span> Partisan Slant</li>
+                <li><span class="tier-marker tier-4">Tier 4</span> Heavy Manipulation</li>
+                <li><span class="tier-marker tier-5">Tier 5</span> Active Disinformation</li>
+              </ul>
+            </div>
+
+            <p class="story-text">
+              Every analysis identifies specific propaganda techniques—from loaded language and false equivalence to appeal to fear and bandwagon effects. PropaScan doesn't just flag problems; it educates users on how manipulation works.
+            </p>
+          </article>
+
+          <!-- Features grid -->
+          <article class="story">
+            <h3 class="story-headline">Key Features</h3>
+
+            <div class="features-grid">
+              <div class="feature-card">
+                <div class="feature-icon">🔍</div>
+                <div class="feature-title">Instant Analysis</div>
+                <div class="feature-desc">Scan entire pages or selected regions with one click</div>
+              </div>
+
+              <div class="feature-card">
+                <div class="feature-icon">🎯</div>
+                <div class="feature-title">Technique Detection</div>
+                <div class="feature-desc">Identifies 20+ propaganda methods and cognitive biases</div>
+              </div>
+
+              <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <div class="feature-title">Severity Scoring</div>
+                <div class="feature-desc">5-tier rating system from neutral to disinformation</div>
+              </div>
+
+              <div class="feature-card">
+                <div class="feature-icon">✏️</div>
+                <div class="feature-title">Neutral Rewrites</div>
+                <div class="feature-desc">See how biased content looks when presented fairly</div>
+              </div>
+
+              <div class="feature-card">
+                <div class="feature-icon">💡</div>
+                <div class="feature-title">Highlight Mode</div>
+                <div class="feature-desc">Visual markers show manipulation directly on pages</div>
+              </div>
+
+              <div class="feature-card">
+                <div class="feature-icon">📚</div>
+                <div class="feature-title">Analysis History</div>
+                <div class="feature-desc">Track and review all scanned content over time</div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- Right column (sidebar) -->
+        <aside class="column column-sidebar">
+          <!-- Install CTA -->
+          <div class="sidebar-box cta-box">
+            <div class="cta-header">GET PROPASCAN</div>
+            <div class="cta-content">
+              <p class="cta-text">Install the free Chrome extension and start detecting propaganda today</p>
+              <button class="cta-button" id="installBtn">
+                <span class="cta-button-text">Add to Chrome</span>
+                <span class="cta-button-arrow">→</span>
+              </button>
+              <div class="cta-note">Free • Open Source • Privacy-First</div>
+            </div>
+          </div>
+
+          <!-- Stats box -->
+          <div class="sidebar-box stats-box">
+            <div class="stats-header">BY THE NUMBERS</div>
+            <div class="stat-row">
+              <div class="stat-number">20+</div>
+              <div class="stat-label">Propaganda Techniques Detected</div>
+            </div>
+            <div class="stat-row">
+              <div class="stat-number">5</div>
+              <div class="stat-label">Severity Tiers</div>
+            </div>
+            <div class="stat-row">
+              <div class="stat-number">100%</div>
+              <div class="stat-label">Free & Open Source</div>
+            </div>
+          </div>
+
+          <!-- Example techniques -->
+          <div class="sidebar-box techniques-box">
+            <div class="techniques-header">DETECTED TECHNIQUES</div>
+            <ul class="techniques-list">
+              <li>Appeal to Fear</li>
+              <li>Loaded Language</li>
+              <li>False Equivalence</li>
+              <li>Cherry Picking</li>
+              <li>Bandwagon Effect</li>
+              <li>Straw Man Arguments</li>
+              <li>Ad Hominem Attacks</li>
+              <li>Emotional Manipulation</li>
+              <li>Glittering Generalities</li>
+              <li>Red Herring Distractions</li>
+            </ul>
+            <div class="techniques-footer">+ Many More</div>
+          </div>
+
+          <!-- Quick guide -->
+          <div class="sidebar-box guide-box">
+            <div class="guide-header">QUICK START</div>
+            <ol class="guide-steps">
+              <li>Install the extension</li>
+              <li>Navigate to any webpage</li>
+              <li>Click the PropaScan icon</li>
+              <li>Choose Scan or Capture mode</li>
+              <li>Review detailed analysis</li>
+            </ol>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Bottom section -->
+      <div class="bottom-section">
+        <!-- Open source notice -->
+        <article class="story opensource-notice">
+          <h3 class="story-headline">Open Source & Privacy-Focused</h3>
+          <p class="story-text">
+            PropaScan is completely free and open source. The code is available on GitHub for inspection, contribution, and adaptation. We believe transparency is essential for a tool designed to expose manipulation—so we practice what we preach.
+          </p>
+          <p class="story-text">
+            Your privacy matters. PropaScan analyzes content locally when possible and does not track your browsing history. All analysis results are stored locally on your device, never sent to external servers without your explicit action.
+          </p>
+          <div class="github-link">
+            <a href="#" class="link-button">View on GitHub →</a>
+          </div>
+        </article>
+
+        <!-- Footer banner -->
+        <div class="footer-banner">
+          <div class="footer-banner-text">
+            "The best way to control people is to control the information they receive."
+          </div>
+          <div class="footer-banner-attribution">— Fight back with PropaScan</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="newspaper-footer">
+      <div class="footer-line"></div>
+      <div class="footer-content">
+        <div class="footer-section">
+          <div class="footer-title">PropaScan</div>
+          <div class="footer-text">Exposing manipulation, one page at a time</div>
+        </div>
+        <div class="footer-section">
+          <div class="footer-links">
+            <a href="#">Documentation</a>
+            <span class="separator">●</span>
+            <a href="#">GitHub</a>
+            <span class="separator">●</span>
+            <a href="#">Report Issues</a>
+          </div>
+        </div>
+      </div>
+      <div class="copyright">© 2024 PropaScan Project • Licensed under MIT</div>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
