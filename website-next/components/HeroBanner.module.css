@@ -1,0 +1,70 @@
+.banner {
+  background: var(--ink-dark);
+  color: var(--paper-light);
+  padding: 40px 50px;
+  margin-bottom: 40px;
+  border: 4px solid var(--ink-dark);
+  box-shadow:
+    inset 0 0 0 8px var(--paper-base),
+    8px 8px 0 var(--ink-medium);
+  position: relative;
+}
+
+.kicker {
+  font-family: var(--font-playfair);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  color: var(--accent-red);
+  background: var(--paper-light);
+  display: inline-block;
+  padding: 6px 16px;
+  margin-bottom: 15px;
+  border: 2px solid var(--accent-red);
+}
+
+.headline {
+  font-family: var(--font-playfair);
+  font-size: 56px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 20px;
+  color: var(--paper-light);
+}
+
+.deck {
+  font-size: 20px;
+  line-height: 1.6;
+  font-style: italic;
+  color: var(--paper-cream);
+  max-width: 900px;
+}
+
+@media (max-width: 1200px) {
+  .headline {
+    font-size: 44px;
+  }
+}
+
+@media (max-width: 900px) {
+  .headline {
+    font-size: 36px;
+  }
+}
+
+@media (max-width: 600px) {
+  .banner {
+    padding: 30px 25px;
+  }
+
+  .headline {
+    font-size: 28px;
+  }
+
+  .deck {
+    font-size: 16px;
+  }
+}

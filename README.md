@@ -78,17 +78,21 @@ You can use any image editor to create these, or use placeholder images for test
 
 ## Website
 
-A marketing website for PropaScan is available in the `website/` directory. The website features the same vintage newspaper aesthetic as the extension and provides:
+A marketing website for PropaScan is available in the `website-next/` directory. Built with **Next.js 14**, the website features the same vintage newspaper aesthetic as the extension and provides:
 
 - Detailed explanation of features and functionality
 - Installation instructions
 - Propaganda tier system overview
 - List of detected techniques
 - Open source and privacy information
+- Smooth animations with Framer Motion
+- Fully responsive design
 
-To view the website locally:
-1. Navigate to the `website/` directory
-2. Open `index.html` in your web browser
+To run the website locally:
+1. Navigate to the `website-next/` directory
+2. Run `npm install` to install dependencies
+3. Run `npm run dev` to start the development server
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-See [website/README.md](website/README.md) for more details about the website.
+See [website-next/README.md](website-next/README.md) for more details about the website.
 

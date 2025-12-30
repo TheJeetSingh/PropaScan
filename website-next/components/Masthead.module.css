@@ -1,0 +1,84 @@
+.masthead {
+  text-align: center;
+  padding-bottom: 30px;
+  margin-bottom: 40px;
+  border-bottom: 4px double var(--ink-dark);
+  position: relative;
+}
+
+.ornament {
+  font-size: 24px;
+  color: var(--ink-medium);
+  letter-spacing: 20px;
+  margin-bottom: 15px;
+  opacity: 0.6;
+}
+
+.editionInfo {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  font-weight: 600;
+  color: var(--ink-medium);
+  margin-bottom: 10px;
+  font-family: var(--font-playfair);
+}
+
+.separator {
+  margin: 0 12px;
+  opacity: 0.5;
+}
+
+.title {
+  font-family: var(--font-fraktur);
+  font-size: 120px;
+  font-weight: 400;
+  letter-spacing: 8px;
+  margin: 20px 0;
+  color: var(--ink-dark);
+  text-shadow:
+    3px 3px 0 rgba(203, 174, 136, 0.4),
+    -1px -1px 0 rgba(0,0,0,0.1);
+}
+
+.tagline {
+  font-family: var(--font-playfair);
+  font-size: 18px;
+  font-style: italic;
+  color: var(--ink-medium);
+  letter-spacing: 2px;
+  margin-top: 10px;
+}
+
+.line {
+  height: 2px;
+  background: var(--ink-dark);
+  margin: 20px auto;
+  width: 60%;
+}
+
+.publishInfo {
+  font-size: 12px;
+  color: var(--ink-light);
+  letter-spacing: 1px;
+  margin-top: 15px;
+}
+
+@media (max-width: 1200px) {
+  .title {
+    font-size: 90px;
+  }
+}
+
+@media (max-width: 900px) {
+  .title {
+    font-size: 70px;
+  }
+}
+
+@media (max-width: 600px) {
+  .title {
+    font-size: 50px;
+    letter-spacing: 4px;
+  }
+}
