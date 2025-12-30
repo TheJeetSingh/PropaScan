@@ -31,11 +31,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 function startAreaSelection() {
   if (selectionMode !== 'none') return;
-  
+
   selectionMode = 'area';
   isSelecting = false;
   selectionRect = null;
-  
+
   // Create overlay
   const overlay = document.createElement('div');
   overlay.id = 'propascan-selection-overlay';
@@ -47,18 +47,18 @@ function startAreaSelection() {
     </div>
   `;
   document.body.appendChild(overlay);
-  
+
   // Create selection rectangle
   const rect = document.createElement('div');
   rect.id = 'propascan-selection-rect';
   document.body.appendChild(rect);
-  
+
   // Handle mouse events for area selection
   document.addEventListener('mousedown', handleAreaMouseDown, true);
   document.addEventListener('mousemove', handleAreaMouseMove, true);
   document.addEventListener('mouseup', handleAreaMouseUp, true);
   document.addEventListener('keydown', handleEscapeKey);
-  
+
   // Cancel button
   document.getElementById('propascan-cancel-selection').addEventListener('click', () => {
     stopSelection();
@@ -67,67 +67,67 @@ function startAreaSelection() {
 
 function handleAreaMouseDown(e) {
   if (selectionMode !== 'area') return;
-  
+
   isSelecting = true;
   const rect = document.getElementById('propascan-selection-rect');
   const overlay = document.getElementById('propascan-selection-overlay');
-  
+
   // Hide instructions
   if (overlay) {
     overlay.style.display = 'none';
   }
-  
+
   startX = e.clientX;
   startY = e.clientY;
-  
+
   rect.style.left = startX + 'px';
   rect.style.top = startY + 'px';
   rect.style.width = '0px';
   rect.style.height = '0px';
   rect.style.display = 'block';
-  
+
   e.preventDefault();
   e.stopPropagation();
 }
 
 function handleAreaMouseMove(e) {
   if (!isSelecting || selectionMode !== 'area') return;
-  
+
   const rect = document.getElementById('propascan-selection-rect');
   if (!rect) return;
-  
+
   const currentX = e.clientX;
   const currentY = e.clientY;
-  
+
   const left = Math.min(startX, currentX);
   const top = Math.min(startY, currentY);
   const width = Math.abs(currentX - startX);
   const height = Math.abs(currentY - startY);
-  
+
   rect.style.left = left + 'px';
   rect.style.top = top + 'px';
   rect.style.width = width + 'px';
   rect.style.height = height + 'px';
-  
+
   e.preventDefault();
   e.stopPropagation();
 }
 
 function handleAreaMouseUp(e) {
   if (!isSelecting || selectionMode !== 'area') return;
-  
+
   isSelecting = false;
   const rect = document.getElementById('propascan-selection-rect');
   if (!rect) return;
-  
+
   const width = parseInt(rect.style.width);
   const height = parseInt(rect.style.height);
-  
+
   // Only proceed if selection has meaningful size
   if (width > 10 && height > 10) {
     const left = parseInt(rect.style.left);
     const top = parseInt(rect.style.top);
-    
+
     // Get the selection bounds relative to viewport
     // NOTE: Don't add scroll offsets because captureVisibleTab only captures the visible viewport
     selectionRect = {
@@ -136,23 +136,23 @@ function handleAreaMouseUp(e) {
       width: width,
       height: height
     };
-    
+
     // Remove selection rectangle and instructions from DOM completely
     rect.remove();
     const overlay = document.getElementById('propascan-selection-overlay');
     if (overlay) {
       overlay.remove();
     }
-    
+
     // Stop selection mode immediately to prevent further interactions
     selectionMode = 'none';
-    
+
     // Remove all event listeners to prevent any UI from appearing
     document.removeEventListener('mousedown', handleAreaMouseDown, true);
     document.removeEventListener('mousemove', handleAreaMouseMove, true);
     document.removeEventListener('mouseup', handleAreaMouseUp, true);
     document.removeEventListener('keydown', handleEscapeKey);
-    
+
     // Use requestAnimationFrame to ensure UI is completely removed from DOM
     // and browser has had time to repaint before screenshot
     requestAnimationFrame(() => {
@@ -172,7 +172,7 @@ function handleAreaMouseUp(e) {
     // Selection too small, stop selection
     stopSelection();
   }
-  
+
   e.preventDefault();
   e.stopPropagation();
 }
@@ -187,17 +187,17 @@ function stopSelection() {
   selectionMode = 'none';
   isSelecting = false;
   document.body.style.cursor = '';
-  
+
   const overlay = document.getElementById('propascan-selection-overlay');
   if (overlay) {
     overlay.remove();
   }
-  
+
   const rect = document.getElementById('propascan-selection-rect');
   if (rect) {
     rect.remove();
   }
-  
+
   document.removeEventListener('mousedown', handleAreaMouseDown, true);
   document.removeEventListener('mousemove', handleAreaMouseMove, true);
   document.removeEventListener('mouseup', handleAreaMouseUp, true);
@@ -210,17 +210,17 @@ function showLoadingOverlay() {
   if (existing) {
     existing.remove();
   }
-  
+
   const overlay = document.createElement('div');
   overlay.id = 'propascan-approval-overlay';
-  
+
   overlay.innerHTML = `
     <div class="propascan-approval-content">
       <h3>Processing Screenshot...</h3>
       <div class="propascan-loading-spinner" style="width: 40px; height: 40px; border: 4px solid rgba(102, 126, 234, 0.2); border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto;"></div>
     </div>
   `;
-  
+
   document.body.appendChild(overlay);
 }
 
@@ -230,10 +230,10 @@ function showApprovalOverlay(data, type) {
   if (existing) {
     existing.remove();
   }
-  
+
   const overlay = document.createElement('div');
   overlay.id = 'propascan-approval-overlay';
-  
+
   // Everything is now screenshot-based
   overlay.innerHTML = `
     <div class="propascan-approval-content">
@@ -247,9 +247,9 @@ function showApprovalOverlay(data, type) {
       </div>
     </div>
   `;
-  
+
   document.body.appendChild(overlay);
-  
+
   // Handle approve button
   document.getElementById('propascan-approve-btn').addEventListener('click', () => {
     chrome.runtime.sendMessage({
@@ -260,7 +260,7 @@ function showApprovalOverlay(data, type) {
     overlay.remove();
     stopSelection();
   });
-  
+
   // Handle cancel button
   document.getElementById('propascan-cancel-btn').addEventListener('click', () => {
     overlay.remove();
@@ -272,7 +272,7 @@ function cropScreenshot(screenshotDataUrl, rect) {
   const img = new Image();
   img.src = screenshotDataUrl;
 
-  img.onload = function() {
+  img.onload = function () {
     try {
       console.log('[Screenshot] Image loaded:', {
         imgWidth: img.width,
@@ -340,7 +340,7 @@ function cropScreenshot(screenshotDataUrl, rect) {
     }
   };
 
-  img.onerror = function() {
+  img.onerror = function () {
     console.error('[Screenshot] Error loading screenshot for cropping');
     // Fallback: show full screenshot
     showApprovalOverlay(screenshotDataUrl, 'screenshot');

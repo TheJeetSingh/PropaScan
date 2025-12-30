@@ -1,14 +1,18 @@
 # PropaScan - Propaganda Detection Chrome Extension
 
-A Chrome extension that uses AI to detect propaganda, manipulation, and bias in text and images.
+A Chrome Extention that utilizes Gemini 3.0 Pro to detect propaganda in images and text.
 
-## Installation
+## Installation For Developers
 
 1. Open Chrome and navigate to `chrome://extensions/`
 2. Enable "Developer mode" (toggle in the top right)
 3. Click "Load unpacked"
 4. Select this folder
 5. The extension icon should appear in your Chrome toolbar
+
+## Installation For Regular Users
+
+1. Coming soon to the Chrome Web Store!
 
 ## Configuration
 
@@ -23,7 +27,9 @@ A Chrome extension that uses AI to detect propaganda, manipulation, and bias in 
    Copy-Item config.example.js config.js
    ```
 
-2. Get your Hack Club AI API key from: https://hackclub.com/ai
+2. Get your Hack Club AI API key from: https://hackclub.com/ai You will need to sign up to Hack Club Slack + be a teenager. 
+
+Coming Soon: I will add a AIStudio rewrite so you can use a normal AIStudio key.
 
 3. Open `config.js` and replace `your_api_key_here` with your actual API key:
    ```javascript
