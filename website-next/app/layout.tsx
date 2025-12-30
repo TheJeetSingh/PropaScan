@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { EB_Garamond, Playfair_Display } from 'next/font/google'
+import { EB_Garamond, Playfair_Display, UnifrakturMaguntia } from 'next/font/google'
 import './globals.css'
 
 const ebGaramond = EB_Garamond({
@@ -11,6 +11,13 @@ const ebGaramond = EB_Garamond({
 const playfair = Playfair_Display({
   subsets: ['latin'],
   variable: '--font-playfair',
+  display: 'swap',
+})
+
+const unifraktur = UnifrakturMaguntia({
+  subsets: ['latin'],
+  variable: '--font-fraktur',
+  weight: '400',
   display: 'swap',
 })
 
@@ -26,13 +33,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${ebGaramond.variable} ${playfair.variable}`}>
-      <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="en" className={`${ebGaramond.variable} ${playfair.variable} ${unifraktur.variable}`}>
       <body>{children}</body>
     </html>
   )

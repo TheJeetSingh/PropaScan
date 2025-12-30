@@ -30,7 +30,7 @@
 }
 
 .title {
-  font-family: var(--font-fraktur);
+  font-family: var(--font-fraktur, 'UnifrakturMaguntia', 'Playfair Display', serif);
   font-size: 120px;
   font-weight: 400;
   letter-spacing: 8px;

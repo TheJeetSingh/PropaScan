@@ -28,7 +28,7 @@ export default function Masthead() {
 
       <motion.h1
         className={styles.title}
-        initial={{ opacity: 0, y: -30 }}
+        initial={{ opacity: 1, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1.2, ease: [0.4, 0, 0.2, 1] }}
       >

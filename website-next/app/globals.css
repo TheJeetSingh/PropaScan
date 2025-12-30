@@ -26,10 +26,6 @@
   --tier-4-color: #8b2500;
   --tier-5-color: #5a0000;
 
-  /* Fonts */
-  --font-garamond: var(--font-garamond);
-  --font-playfair: var(--font-playfair);
-  --font-fraktur: 'UnifrakturMaguntia', 'Playfair Display', serif;
 }
 
 * {
@@ -39,15 +35,15 @@
 }
 
 body {
-  font-family: var(--font-garamond), 'Georgia', 'Times New Roman', serif;
+  font-family: var(--font-garamond, 'EB Garamond'), 'Georgia', 'Times New Roman', serif;
   background:
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E"),
+    radial-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
     linear-gradient(to bottom,
       var(--paper-dark) 0%,
       var(--paper-base) 50%,
       var(--paper-dark) 100%
     );
-  background-attachment: fixed;
+  background-size: 4px 4px, auto;
   color: var(--ink-dark);
   line-height: 1.8;
   overflow-x: hidden;
@@ -73,14 +69,15 @@ body {
   max-width: 1400px;
   margin: 0 auto;
   background:
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)' opacity='0.15'/%3E%3C/svg%3E"),
+    radial-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
     linear-gradient(180deg,
       var(--paper-light) 0%,
       var(--paper-base) 15%,
       var(--paper-base) 85%,
       var(--paper-dark) 100%
     );
-  background-blend-mode: overlay, normal;
+  background-size: 5px 5px, auto;
+  background-blend-mode: multiply, normal;
   padding: 60px 80px;
   box-shadow:
     0 0 0 1px var(--ink-medium),
@@ -112,7 +109,7 @@ body {
 
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-playfair), serif;
+  font-family: var(--font-playfair, 'Playfair Display'), serif;
 }
 
 /* Links */

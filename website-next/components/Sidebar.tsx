@@ -25,8 +25,8 @@ function SidebarBox({ children, index }: { children: React.ReactNode, index: num
   return (
     <motion.div
       ref={ref}
-      initial={{ opacity: 0, x: 20 }}
-      animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: 20 }}
+      initial={{ opacity: 1, x: 12 }}
+      animate={isInView ? { opacity: 1, x: 0 } : { opacity: 1, x: 12 }}
       transition={{ duration: 0.6, delay: index * 0.15, ease: [0.4, 0, 0.2, 1] }}
     >
       {children}
