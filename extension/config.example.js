@@ -7,9 +7,9 @@
 
 const CONFIG = {
   // OPTION 1: Use backend proxy (recommended - no API key needed)
-  // Set this to your deployed Vercel URL
+  // Set this to your deployed Vercel URL (e.g., 'https://your-app.vercel.app')
   // Leave empty to use direct Hack Club AI API (requires API key below)
-  PROXY_URL: 'https://website-next-nine-alpha.vercel.app',
+  PROXY_URL: '',
   
   // OPTION 2: Direct Hack Club AI API (requires API key)
   // REQUIRED if PROXY_URL is empty: Your Hack Club AI API Key
