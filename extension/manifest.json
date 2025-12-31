@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PropaScan",
   "version": "1.0.0",
-  "description": "AI-powered propaganda and manipulation detector. Automatically scans web pages for bias, misleading content, and psychological manipulation techniques.",
+  "description": "AI-powered propaganda detector. Scans web pages for bias, manipulation, and disinformation techniques.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
