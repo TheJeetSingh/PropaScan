@@ -17,6 +17,8 @@ node_modules/
 
 # Environment variables
 .env
+.env.local
+website-next/.env.local
 
 # Configuration files with secrets
 config.js
