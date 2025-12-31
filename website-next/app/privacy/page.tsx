@@ -9,7 +9,7 @@ export default function PrivacyPolicy() {
         </h1>
         
         <div style={{ fontFamily: 'EB Garamond, serif', fontSize: '18px', lineHeight: '1.8', color: '#2c2416' }}>
-          <p style={{ marginBottom: '20px', fontStyle: 'italic' }}>Last updated: December 30, 2024</p>
+          <p style={{ marginBottom: '20px', fontStyle: 'italic' }}>Last updated: December 30, 2025</p>
 
           <section style={{ marginBottom: '40px' }}>
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: '32px', marginBottom: '20px' }}>
