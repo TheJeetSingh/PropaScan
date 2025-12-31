@@ -1,70 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Rate limiting - simple in-memory store (for production, use Redis or similar)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-
-// Rate limit: 20 requests per hour per IP
-const RATE_LIMIT = 20;
-const RATE_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour in milliseconds
-
-// Clean up old entries every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, data] of rateLimitMap.entries()) {
-    if (now > data.resetTime) {
-      rateLimitMap.delete(ip);
-    }
-  }
-}, 10 * 60 * 1000);
-
-function getClientIP(request: NextRequest): string {
-  // Check various headers for IP address
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
-  }
-  const realIP = request.headers.get('x-real-ip');
-  if (realIP) {
-    return realIP;
-  }
-  // Fallback to a default if no IP found (shouldn't happen in production)
-  return 'unknown';
-}
-
-function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetTime: number } {
-  const now = Date.now();
-  const record = rateLimitMap.get(ip);
-
-  if (!record || now > record.resetTime) {
-    // New IP or window expired, reset
-    rateLimitMap.set(ip, {
-      count: 1,
-      resetTime: now + RATE_LIMIT_WINDOW,
-    });
-    return {
-      allowed: true,
-      remaining: RATE_LIMIT - 1,
-      resetTime: now + RATE_LIMIT_WINDOW,
-    };
-  }
-
-  if (record.count >= RATE_LIMIT) {
-    // Rate limit exceeded
-    return {
-      allowed: false,
-      remaining: 0,
-      resetTime: record.resetTime,
-    };
-  }
-
-  // Increment count
-  record.count++;
-  return {
-    allowed: true,
-    remaining: RATE_LIMIT - record.count,
-    resetTime: record.resetTime,
-  };
-}
+// Note: Rate limiting is handled by Hack Club AI API itself
+// Vercel serverless functions are stateless, so in-memory rate limiting won't work
+// For production rate limiting, consider using Vercel's Edge Config or Upstash Redis
 
 // Get API key from environment variable
 function getAPIKey(): string {
@@ -116,32 +54,6 @@ export async function POST(request: NextRequest) {
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     };
-
-    // Get client IP for rate limiting
-    const clientIP = getClientIP(request);
-
-    // Check rate limit
-    const rateLimitCheck = checkRateLimit(clientIP);
-    if (!rateLimitCheck.allowed) {
-      const resetTimeSeconds = Math.ceil((rateLimitCheck.resetTime - Date.now()) / 1000);
-      return NextResponse.json(
-        {
-          error: 'Rate limit exceeded',
-          message: `Too many requests. Please try again in ${Math.ceil(resetTimeSeconds / 60)} minutes.`,
-          resetTime: rateLimitCheck.resetTime,
-        },
-        {
-          status: 429,
-          headers: {
-            ...corsHeaders,
-            'X-RateLimit-Limit': RATE_LIMIT.toString(),
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': rateLimitCheck.resetTime.toString(),
-            'Retry-After': resetTimeSeconds.toString(),
-          },
-        }
-      );
-    }
 
     // Parse request body
     let body;
@@ -202,15 +114,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Forward the response with rate limit headers
+    // Forward the response with CORS headers
+    // Rate limit headers from Hack Club AI will be passed through if present
     return NextResponse.json(responseData, {
       status: response.status,
-      headers: {
-        ...corsHeaders,
-        'X-RateLimit-Limit': RATE_LIMIT.toString(),
-        'X-RateLimit-Remaining': rateLimitCheck.remaining.toString(),
-        'X-RateLimit-Reset': rateLimitCheck.resetTime.toString(),
-      },
+      headers: corsHeaders,
     });
   } catch (error: any) {
     console.error('Proxy error:', error);

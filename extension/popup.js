@@ -7,6 +7,13 @@ let currentTabId = null;
 document.addEventListener('DOMContentLoaded', () => {
   console.log('Popup DOM loaded');
 
+  // Save config to storage so background.js can access it
+  if (typeof window !== 'undefined' && window.PropaScanConfig) {
+    chrome.storage.sync.set({ propaScanConfig: window.PropaScanConfig }, () => {
+      console.log('[Popup] Config saved to storage');
+    });
+  }
+
   // Get DOM elements
   const imagePreview = document.getElementById('imagePreview');
   const imagePreviewContainer = document.getElementById('imagePreviewContainer');
@@ -30,8 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const addToAutoScanBtn = document.getElementById('addToAutoScanBtn');
   const autoScanStatus = document.getElementById('autoScanStatus');
 
-  // Load current page info
+  // Load current page info and mode
   loadCurrentPageInfo();
+  loadCurrentMode();
 
   // Scan page (Patrol Mode) button handler
   if (scanPageBtn) {
@@ -736,6 +744,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (modeName) {
         modeName.textContent = displayName;
       }
+      
+      // Update auto-scan button visibility when mode loads
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab) {
+        await updateAutoScanButton(tab);
+      }
     } catch (error) {
       console.error('Error loading mode:', error);
       if (modeName) {
@@ -927,8 +941,17 @@ document.addEventListener('DOMContentLoaded', () => {
           scanPageBtn.disabled = false;
         }
 
-        // Update auto-scan button state
+        // Update auto-scan button state (always call this to ensure button visibility)
         await updateAutoScanButton(tab);
+        
+        // Double-check: if in Patrol mode and button is still hidden, force show it
+        const modeCheck = await chrome.storage.sync.get(['detectionMode']);
+        if (modeCheck.detectionMode === 'patrol' && addToAutoScanBtn && addToAutoScanBtn.classList.contains('hidden')) {
+          const domain = getDomainFromUrl(tab.url);
+          if (domain) {
+            addToAutoScanBtn.classList.remove('hidden');
+          }
+        }
       } else {
         // Not a valid webpage
         if (pageInfoSection) {
@@ -941,6 +964,9 @@ document.addEventListener('DOMContentLoaded', () => {
           addToAutoScanBtn.classList.add('hidden');
         }
       }
+      
+      // Also update button when mode changes (in case loadCurrentPageInfo runs before mode is loaded)
+      await updateAutoScanButton(tab);
     } catch (error) {
       console.error('Error loading page info:', error);
       if (pageInfoSection) {

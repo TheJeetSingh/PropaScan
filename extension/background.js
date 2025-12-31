@@ -555,10 +555,10 @@ async function performSentinelScan(tabId, url) {
     console.log('[Sentinel] Config loaded from storage:', !!config);
     
     if (!config) {
-      console.log('[Sentinel] Config not in storage, trying to load from config.js via popup...');
-      // Try to trigger popup to save config (if it hasn't been opened yet)
-      // For now, use defaults but log a warning
+      console.log('[Sentinel] Config not in storage, using defaults...');
+      // Default config - will be overridden when popup opens
       config = {
+        PROXY_URL: 'http://localhost:3000', // Default to local dev server
         HACKCLUB_AI_API_URL: 'https://ai.hackclub.com/proxy/v1/chat/completions',
         AI_MODEL: 'google/gemini-3-pro-preview',
         TEMPERATURE: 0.7,
@@ -566,7 +566,7 @@ async function performSentinelScan(tabId, url) {
         TOP_P: 1.0,
         HACK_CLUB_AI_API_KEY: ''
       };
-      console.warn('[Sentinel] Using default config - API key may be missing. Open popup once to save config.');
+      console.warn('[Sentinel] Using default config. Open popup once to load config from config.js.');
     }
     
     // Ensure MAX_TOKENS is at least 16000 for Sentinel mode
@@ -867,7 +867,10 @@ async function handlePatrolNavigation(tabId, tab) {
       }
 
       log('[Patrol] Starting auto-scan after delay');
+      
       const result = await performPatrolScan(tabId, currentTab.url);
+      
+      // Badge is already updated in performPatrolScan function
       
       if (result && result.instances && result.instances.length > 0) {
         setTimeout(() => autoShowHighlights(tabId, result.instances), 1000);
@@ -1096,6 +1099,7 @@ async function performPatrolScan(tabId, url) {
 
     if (!config) {
       config = {
+        PROXY_URL: 'http://localhost:3000', // Default to local dev server
         HACKCLUB_AI_API_URL: 'https://ai.hackclub.com/proxy/v1/chat/completions',
         AI_MODEL: 'google/gemini-3-pro-preview',
         TEMPERATURE: 0.7,
@@ -1180,6 +1184,9 @@ async function performPatrolScan(tabId, url) {
     }
 
     log('[Patrol] Sending to AI for analysis...');
+    
+    // Set scanning badge
+    updateBadge(tabId, 0, 'scanning');
 
     // Build headers
     const headers = {
@@ -1276,12 +1283,17 @@ async function performPatrolScan(tabId, url) {
       domain: domain
     });
 
-    console.log('[Patrol] Scan completed successfully');
+    console.log('[Patrol] Scan completed successfully, score:', analysisResult.score || 0);
+    
+    // Update badge with score
+    updateBadge(tabId, analysisResult.score || 0, 'complete');
 
     return analysisResult;
 
   } catch (error) {
     console.error('[Patrol] Scan error:', error);
+    // Update badge to show error
+    updateBadge(tabId, 0, 'error');
     // Error status is already set in catch blocks above
     throw error;
   }

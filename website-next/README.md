@@ -9,10 +9,12 @@ Marketing website for PropaScan Chrome Extension. Built with Next.js 14.
 npm install
 ```
 
-2. Create a `.env.local` file (copy from `.env.local.example`):
+2. Create a `.env.local` file:
 ```bash
-cp .env.local.example .env.local
-# Then edit .env.local and add your API key
+# Create .env.local file
+echo "HACK_CLUB_AI_API_KEY=your_api_key_here" > .env.local
+# Or manually create the file and add:
+# HACK_CLUB_AI_API_KEY=your_actual_api_key_here
 ```
 
 3. Run development server:
@@ -37,11 +39,20 @@ Set this in Vercel dashboard: Settings → Environment Variables
 
 The website includes a backend proxy at `/api/analyze` that:
 - Forwards requests to Hack Club AI
-- Hides your API key from the extension
-- Rate limits requests (20 per hour per IP)
+- Hides your API key from the extension (stored in Vercel environment variables)
 - Handles CORS for the extension
+- Works with Vercel's serverless architecture
+- Rate limiting is handled by Hack Club AI API itself
+
+**Serverless Compatible:** The proxy is designed for Vercel's serverless functions:
+- Stateless (no in-memory storage)
+- Handles CORS per-request
+- Environment variables via Vercel dashboard
+- Request/response forwarding
 
 Once deployed, update your extension's `config.js` with:
 ```javascript
 PROXY_URL: 'https://your-vercel-url.vercel.app'
 ```
+
+For local testing, see `../TEST_BACKEND.md` in the root directory.
